@@ -4,6 +4,7 @@ import { PageHero } from '@/components/SharedSections'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { storageClient } from '@/lib/storage'
+import { sendContactEmail } from '@/lib/email'
 import { cn } from '@/lib/utils'
 
 const ENQUIRY_TYPES = [
@@ -40,9 +41,13 @@ export default function Contact() {
       setLoading(true)
       setServerError('')
       try {
+        // Send email via EmailJS (to company + auto-reply to client)
+        await sendContactEmail(form)
+        // Also keep local persistence for backup
         await storageClient.entities.ContactMessage.create(form)
         setSent(true)
-      } catch {
+      } catch (err) {
+        console.error('Contact email error:', err)
         setServerError('We could not send that just now. Please call dispatch on 07761 734423.')
       } finally {
         setLoading(false)
