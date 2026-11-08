@@ -1,0 +1,23 @@
+{
+  "name": "HAYD",
+  "short_name": "HAYD",
+  "description": "A professional pharmacy delivery service that brings prescribed medications directly to your door with speed and reliability.",
+  "icons": [
+    {
+      "src": "/images/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#08162E",
+  "background_color": "#ffffff",
+  "scope": "/"
+}
+

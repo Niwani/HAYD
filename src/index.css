@@ -1,0 +1,106 @@
+@import "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 200 25% 98%;
+  --foreground: 218 60% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 218 60% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 218 60% 10%;
+  --primary: 218 70% 11%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 200 20% 95%;
+  --secondary-foreground: 218 55% 14%;
+  --muted: 200 18% 95%;
+  --muted-foreground: 215 14% 38%;
+  --accent: 174 84% 29%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 8 70% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 205 20% 89%;
+  --input: 205 20% 88%;
+  --ring: 174 84% 29%;
+  --signal: 8 78% 56%;
+  --chart-1: 174 84% 29%;
+  --chart-2: 218 70% 20%;
+  --chart-3: 8 78% 56%;
+  --chart-4: 200 30% 60%;
+  --chart-5: 174 40% 60%;
+  --radius: 0.75rem;
+  --font-heading: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --sidebar-background: 0 0% 98%;
+  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-primary: 240 5.9% 10%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 4.8% 95.9%;
+  --sidebar-accent-foreground: 240 5.9% 10%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 217.2 91.2% 59.8%;
+}
+
+* {
+  border-color: hsl(var(--border));
+  outline-color: hsl(var(--ring) / 0.5);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: hsl(var(--background));
+  font-family: var(--font-body);
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizelegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  text-wrap: balance;
+}
+
+::selection {
+  background: hsl(var(--accent) / 0.18);
+  color: hsl(var(--foreground));
+}
+
+.container-page {
+  width: 100%;
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@media (width >= 768px) {
+  .container-page {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+}
+
+.shadow-lift {
+  box-shadow: 0 1px 2px #08162e0a, 0 30px 60px -32px #08162e38;
+}
+
+.label-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
