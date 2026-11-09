@@ -43,19 +43,21 @@ export async function sendContactEmail(data) {
   // 2. If an auto-reply template is configured, send acknowledgment back to the user
   if (AUTOREPLY_TEMPLATE_ID) {
     try {
-      await emailjs.send(
-        SERVICE_ID,
-        AUTOREPLY_TEMPLATE_ID,
-        {
-          to_name: data.name,
-          to_email: data.email,
-          reply_to: 'healthatyourdoor.co@gmail.com',
-          message_preview: data.message.length > 150 ? data.message.slice(0, 150) + '...' : data.message,
-        },
-        PUBLIC_KEY
-      )
+      const autoReplyParams = {
+        to_name: data.name,
+        name: data.name,
+        to_email: data.email,
+        email: data.email,
+        user_email: data.email,
+        client_email: data.email,
+        reply_to: 'healthatyourdoor.co@gmail.com',
+        from_name: 'HAYD',
+        message: data.message,
+        message_preview: data.message.length > 150 ? data.message.slice(0, 150) + '...' : data.message,
+      }
+      await emailjs.send(SERVICE_ID, AUTOREPLY_TEMPLATE_ID, autoReplyParams, PUBLIC_KEY)
     } catch (autoErr) {
-      console.warn('Auto-reply email failed to send:', autoErr)
+      console.error('Auto-reply email failed to send:', autoErr)
     }
   }
 
