@@ -8,10 +8,11 @@ import { sendContactEmail } from '@/lib/email'
 import { cn } from '@/lib/utils'
 
 const ENQUIRY_TYPES = [
-  { id: 'pharmacy', label: 'Pharmacy' },
-  { id: 'patient', label: 'Patient or carer' },
-  { id: 'existing_delivery', label: 'An existing collection' },
-  { id: 'other', label: 'Something else' },
+  { id: 'pharmacy', label: 'Community Pharmacy' },
+  { id: 'healthcare_provider', label: 'Clinic / Healthcare Provider' },
+  { id: 'existing_delivery', label: 'Existing Collection / Account' },
+  { id: 'partnership', label: 'New Partnership' },
+  { id: 'other', label: 'Other Healthcare Organisation' },
 ]
 
 export default function Contact() {
@@ -172,7 +173,7 @@ export default function Contact() {
 
                 <div>
                   <p className="text-[0.75rem] font-medium uppercase tracking-[0.1em] text-muted-foreground">
-                    I am…
+                    Organisation Type
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {ENQUIRY_TYPES.map((type) => (
