@@ -32,8 +32,8 @@ const STANDARDS_AT_A_GLANCE = [
 const FOUR_STEPS = [
   {
     n: '01',
-    title: 'Open a trade account',
-    body: 'One call, or a form. We agree your collection points, cut-off times and the packaging you already use, then issue an account contact and escalation line.',
+    title: 'Arrange your collection',
+    body: 'One call or an online request right here on the website. We confirm your pickup times, delivery window, and specific handling needs.',
   },
   {
     n: '02',

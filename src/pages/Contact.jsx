@@ -61,7 +61,7 @@ export default function Contact() {
       <PageHero
         eyebrow="Contact"
         title="A real person, on the first ring"
-        intro="Partnerships and dispatch answer between 8am and 8pm, Monday to Saturday. Partner pharmacies can ask for the onboarding pack — for anything urgent, call rather than write."
+        intro="Dispatch and operations answer between 8am and 8pm, Monday to Saturday. Request a collection directly online, or call us for urgent same-day requirements."
       />
 
       <section className="bg-background py-14 md:py-20">
@@ -98,7 +98,7 @@ export default function Contact() {
                   healthatyourdoor.co@gmail.com
                 </span>
                 <span className="mt-1 block text-[0.8rem] text-muted-foreground">
-                  Partner pharmacies: ask for the onboarding pack.
+                  Direct line for collection schedules and enquiries.
                 </span>
               </span>
             </a>

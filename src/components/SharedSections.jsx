@@ -30,7 +30,7 @@ export function PageHero({ eyebrow, title, intro, children }) {
 
 export function CallToAction({
   title = 'Move medicines on one accountable route.',
-  body = 'Open a trade account and we will build your collection schedule — from a single pharmacy counter to a multi-site group.',
+  body = 'Get in touch and we will arrange your collection schedule — from a single pharmacy counter to regular scheduled rounds.',
   primary = { label: 'Partner with HAYD', to: '/partners' },
   secondary = { label: 'Speak to the team', to: '/contact' },
 }) {

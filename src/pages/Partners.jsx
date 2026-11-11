@@ -57,26 +57,26 @@ const COMPLIANCE_CONTROLS = [
   },
   {
     icon: ClipboardList,
-    title: 'SOPs signed off with you',
-    body: 'We work to your standard operating procedures as well as ours, agreed in writing at onboarding and reviewed with you annually.',
+    title: 'SOPs aligned with your dispensary',
+    body: 'We follow strict standard operating procedures aligned with your dispensary requirements, ensuring compliance from day one.',
   },
 ]
 
 const ONBOARDING_STEPS = [
   {
     n: '01',
-    title: 'Scope call',
-    body: 'Volumes, collection points, cut-off times and the packaging you already use. Half an hour, usually enough.',
+    title: 'Initial contact',
+    body: 'Tell us your collection times, address and regular delivery requirements via our online form or a quick call to dispatch.',
   },
   {
     n: '02',
-    title: 'SOP and manifest sign-off',
-    body: 'We agree the paperwork, escalation contacts and a trial run before a single regulated item moves.',
+    title: 'Agree your collection times',
+    body: 'We confirm your pickup windows, daily cut-offs, and any cold-chain or controlled drug requirements.',
   },
   {
     n: '03',
-    title: 'Go live',
-    body: 'Rounds start on schedule, with a named account contact, monthly reconciliation and reporting.',
+    title: 'Start collections',
+    body: 'Rounds start smoothly on your agreed schedule. You can book collections or track deliveries right here on the website.',
   },
 ]
 

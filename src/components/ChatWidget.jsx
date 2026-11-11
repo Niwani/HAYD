@@ -16,7 +16,7 @@ import haydIconNavy from '@/assets/hayd-icon-navy.png'
 
 const QUICK_PROMPTS = [
   'What are your collection cut-offs?',
-  'How do I open a pharmacy trade account?',
+  'How do I arrange a pharmacy collection?',
   'How are cold-chain items & CDs handled?',
   'What is the direct dispatch phone number?',
 ]
@@ -32,10 +32,10 @@ function getBotResponse(userMsg) {
     }
   }
 
-  if (q.includes('account') || q.includes('open') || q.includes('sign up') || q.includes('onboard') || q.includes('partner') || q.includes('pricing') || q.includes('cost') || q.includes('quote')) {
+  if (q.includes('account') || q.includes('open') || q.includes('start') || q.includes('arrange') || q.includes('book') || q.includes('partner') || q.includes('pricing') || q.includes('cost') || q.includes('quote')) {
     return {
-      text: "Opening a trade account is straightforward:\n\n1. Contact our partnerships team through our **Contact page** or by calling dispatch.\n2. We establish your dispensary collection windows, delivery radius, and packaging standards.\n3. You receive your account onboarding pack, portal access, and dedicated escalation phone line.\n\nThere are no monthly minimum volume lock-ins for community pharmacies.",
-      cta: { text: 'Open partner onboarding', to: '/contact' }
+      text: "Getting started with HAYD is simple and done directly through this website:\n\n1. **Book Online:** Submit your collection details anytime via our [Book a Collection](/request) page or send an enquiry on our [Contact page](/contact).\n2. **Call or Email Us:** Call our dispatch team directly on [07761 734423](tel:+447761734423) or email [healthatyourdoor.co@gmail.com](mailto:healthatyourdoor.co@gmail.com).\n3. **Flexible Setup:** We agree your daily pickup times and start collections right away — no complicated onboarding paperwork or lock-in contracts.",
+      cta: { text: 'Book a collection', to: '/request' }
     }
   }
 
@@ -62,7 +62,7 @@ function getBotResponse(userMsg) {
 
   if (q.includes('where') || q.includes('area') || q.includes('coverage') || q.includes('location') || q.includes('birmingham') || q.includes('london')) {
     return {
-      text: "HAYD operates throughout the West Midlands (headquartered at 23 Colmore Row, Birmingham) with dedicated route coverage expanding across major UK metropolitan centres.\n\nWhen opening an account, dispatch will confirm the exact collection slots and delivery postcodes available for your pharmacy.",
+      text: "HAYD operates throughout the West Midlands (headquartered at 23 Colmore Row, Birmingham) with dedicated route coverage expanding across major UK metropolitan centres.\n\nContact dispatch to confirm the exact collection slots and delivery postcodes available for your pharmacy.",
       cta: { text: 'Check coverage with dispatch', to: '/contact' }
     }
   }
@@ -75,7 +75,7 @@ function getBotResponse(userMsg) {
 
   // Default helpful overview
   return {
-    text: "Thank you for reaching out to HAYD.\n\nWe provide MHRA-guided, GDP-aligned transport for community pharmacies, clinics, and healthcare organisations — covering scheduled repeat delivery rounds, cold-chain (2–8°C), and urgent same-day collections.\n\nWould you like assistance with **cut-off times**, **opening an account**, **tracking a delivery**, or **speaking directly with dispatch**?",
+    text: "Thank you for reaching out to HAYD.\n\nWe provide MHRA-guided, GDP-aligned transport for community pharmacies, clinics, and healthcare organisations — covering scheduled repeat delivery rounds, cold-chain (2–8°C), and urgent same-day collections.\n\nWould you like assistance with **cut-off times**, **booking a collection**, **tracking a delivery**, or **speaking directly with dispatch**?",
     cta: { text: 'Contact operations', to: '/contact' }
   }
 }
@@ -331,3 +331,4 @@ export function ChatWidget() {
     </div>
   )
 }
+
