@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { Header } from '@/components/Header'
 import { Footer } from '@/components/Footer'
+import { ChatWidget } from '@/components/ChatWidget'
 
 export function ScrollToTop() {
   const { pathname, hash } = useLocation()
@@ -31,6 +32,7 @@ export function Layout() {
         <Outlet />
       </main>
       <Footer />
+      <ChatWidget />
     </div>
   )
 }
