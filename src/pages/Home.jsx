@@ -98,24 +98,33 @@ const REGULATORY_STANDARDS = [
   },
 ]
 
-const TESTIMONIALS = [
+const DISPENSARY_PRIORITIES = [
   {
-    quote:
-      'We release forty-plus prescriptions a day through HAYD. The manifest reconciles to the signature every single time — I have never had to chase a POD.',
-    name: 'Superintendent pharmacist',
-    role: 'Independent pharmacy group, North London',
+    tag: 'Complete Chain of Custody',
+    title: 'Digital manifests with zero paper chasing',
+    body: 'Every prescription is tracked against your dispatch manifest and reconciled the same evening. Digital handovers, timestamped signatures, and geocoded delivery proof keep your dispensary audit-ready without administrative drag.',
+    highlights: [
+      'Reconciled electronic manifest returned daily',
+      'Timestamped signature captured at recipient door',
+    ],
   },
   {
-    quote:
-      'Fridge lines, controlled drugs and urgent scripts all go out on one manifest and come back signed. I have stopped keeping a paper chase.',
-    name: 'Pharmacy manager',
-    role: 'Community pharmacy, Hertfordshire',
+    tag: 'GDP & MHRA Aligned',
+    title: 'Cold-chain, CD lines and standard scripts on one round',
+    body: 'Eliminate the complexity of juggling multiple couriers for different prescription classes. Our validated 2°C–8°C thermal carriers and ID-verified protocols allow your dispensary to dispatch all categories in a single scheduled pickup.',
+    highlights: [
+      '2°C–8°C validated thermal packaging transport',
+      'Named courier ID verification for CD compliance',
+    ],
   },
   {
-    quote:
-      'We started with one evening run and now have three a day. In eighteen months nothing has gone missing and no patient has called to chase.',
-    name: 'Pharmacy director',
-    role: 'Independent group, South London',
+    tag: 'Dispensary Continuity',
+    title: 'Reliable scheduled cut-offs that protect workflow',
+    body: 'No uncertain collection windows disrupting your checking bench. Dedicated, vetted couriers arrive at your agreed collection slots, giving your dispensary team a predictable rhythm from morning assembly to evening dispatch.',
+    highlights: [
+      'Fixed daily collection rounds (up to 3x daily)',
+      'DBS-checked, uniformed medical couriers',
+    ],
   },
 ]
 
@@ -367,29 +376,48 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="border-y border-border bg-secondary/50 py-20 md:py-28">
+      <section className="border-y border-border bg-secondary/40 py-20 md:py-28">
         <div className="container-page">
-          <div className="max-w-xl">
-            <span className="label-caps text-accent">In their words</span>
+          <div className="max-w-2xl">
+            <span className="label-caps text-accent">Dispensing priorities</span>
             <h2 className="mt-5 text-[clamp(2rem,4.2vw,3.25rem)] font-semibold leading-[1.05] tracking-[-0.03em] text-foreground">
-              Trusted behind the counter
+              Built for how dispensaries actually operate
             </h2>
+            <p className="mt-4 text-[1rem] leading-relaxed text-muted-foreground">
+              We design our rounds around the accountability, regulatory compliance, and audit trails
+              required by pharmacy managers and superintendent pharmacists.
+            </p>
           </div>
 
           <div className="mt-14 grid gap-6 md:grid-cols-3">
-            {TESTIMONIALS.map((item) => (
-              <figure
-                key={item.name}
-                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-7 transition-shadow duration-300 hover:shadow-lift"
+            {DISPENSARY_PRIORITIES.map((item) => (
+              <div
+                key={item.title}
+                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-8 transition-shadow duration-300 hover:shadow-lift"
               >
-                <blockquote className="font-heading text-[1.0625rem] leading-relaxed tracking-[-0.005em] text-foreground/85">
-                  “{item.quote}”
-                </blockquote>
-                <figcaption className="mt-8 border-t border-border pt-5">
-                  <div className="text-sm font-semibold text-foreground">{item.name}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">{item.role}</div>
-                </figcaption>
-              </figure>
+                <div>
+                  <span className="inline-block rounded-full bg-accent/10 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-wider text-accent">
+                    {item.tag}
+                  </span>
+                  <h3 className="mt-5 font-heading text-lg font-bold leading-snug tracking-[-0.015em] text-foreground">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3.5 text-sm leading-relaxed text-muted-foreground">
+                    {item.body}
+                  </p>
+                </div>
+
+                <ul className="mt-8 space-y-2.5 border-t border-border pt-6 text-xs font-medium text-foreground/85">
+                  {item.highlights.map((h) => (
+                    <li key={h} className="flex items-start gap-2">
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+                        ✓
+                      </span>
+                      <span>{h}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
           </div>
         </div>
