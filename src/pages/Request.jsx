@@ -62,6 +62,7 @@ const INITIAL_FORM = {
   // Recipient / Patient
   patient_name: '',
   recipient_phone: '',
+  recipient_email: '',
   address_line1: '',
   address_line2: '',
   town: 'Birmingham',
@@ -205,6 +206,7 @@ export default function Request() {
         pickup_address: form.pickup_address,
         patient_name: form.patient_name,
         recipient_phone: form.recipient_phone,
+        recipient_email: form.recipient_email,
         address_line1: form.address_line1,
         address_line2: form.address_line2,
         town: form.town,
@@ -423,6 +425,16 @@ export default function Request() {
                           placeholder="Mobile for delivery arrival SMS/call"
                         />
                       </div>
+
+                      <FormInput
+                        id="recipient_email"
+                        label="Recipient Email Address"
+                        type="email"
+                        value={form.recipient_email}
+                        onChange={(val) => update({ recipient_email: val })}
+                        placeholder="patient@example.com"
+                        helper="We will email the recipient their live tracking link and confirm delivery from your pharmacy."
+                      />
 
                       <div className="space-y-4">
                         <FormInput
