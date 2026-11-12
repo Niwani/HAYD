@@ -16,6 +16,17 @@ export const EMAILJS_CONFIG = {
 }
 
 /**
+ * Returns dynamic tracking URL based on current active origin
+ */
+export function getTrackingUrl(reference) {
+  let origin = 'https://thehayd.uk'
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    origin = window.location.origin
+  }
+  return `${origin}/track?ref=${encodeURIComponent(reference)}`
+}
+
+/**
  * Send contact email via EmailJS
  * @param {Object} data { name, email, phone, enquiry_type, message }
  */
@@ -85,7 +96,7 @@ export async function sendCollectionBookingEmail(data) {
     return { status: 200, text: 'Simulated success' }
   }
 
-  const trackingUrl = `https://thehayd.uk/track?ref=${data.reference}`
+  const trackingUrl = getTrackingUrl(data.reference)
 
   // -------------------------------------------------------------
   // 1. DISPATCH ALERT (Sent to healthatyourdoor.co@gmail.com)
@@ -139,7 +150,6 @@ COLLECTION TIMING:
   // -------------------------------------------------------------
   if (AUTOREPLY_TEMPLATE_ID && data.email) {
     try {
-      // 600ms pause to ensure clean sequencing
       await new Promise((r) => setTimeout(r, 600))
 
       const pharmacyMessage = `
@@ -193,7 +203,6 @@ Thank you for partnering with HAYD.
   const recipientTarget = (data.recipient_email || '').trim()
   if (RECIPIENT_TEMPLATE_ID && recipientTarget) {
     try {
-      // 600ms pause to ensure clean sequencing
       await new Promise((r) => setTimeout(r, 600))
 
       const recipientMessage = `
@@ -246,4 +255,131 @@ For delivery arrival updates, you can contact HAYD dispatch on 07761 734423.
   }
 
   return response
+}
+
+/**
+ * Send status update email to both pharmacy and recipient when status changes on /track
+ * @param {Object} data { reference, status, note, pharmacy_name, pharmacy_email, recipient_name, recipient_email, town }
+ */
+export async function sendStatusUpdateEmail(data) {
+  const { SERVICE_ID, ADMIN_TEMPLATE_ID, AUTOREPLY_TEMPLATE_ID, RECIPIENT_TEMPLATE_ID, PUBLIC_KEY } =
+    EMAILJS_CONFIG
+
+  if (!SERVICE_ID || !PUBLIC_KEY) {
+    console.warn('EmailJS not configured for status update.')
+    return { status: 200, text: 'Simulated success' }
+  }
+
+  const trackingUrl = getTrackingUrl(data.reference)
+
+  const statusLabels = {
+    received: 'Request received & scheduled for collection',
+    verifying: 'Pharmacist verification at dispensary counter',
+    dispatched: 'Out for delivery (Courier collected from counter)',
+    delivered: 'Delivered & signed for at doorstep',
+    cancelled: 'Delivery cancelled',
+  }
+
+  const statusText = statusLabels[data.status] || data.status
+  const pharmacyTarget = (data.pharmacy_email || data.email || '').trim()
+  const recipientTarget = (data.recipient_email || '').trim()
+
+  console.log(`Sending status updates for ${data.reference} (${statusText})...`)
+
+  // 1. Notify Pharmacy
+  if (AUTOREPLY_TEMPLATE_ID && pharmacyTarget) {
+    try {
+      const pharmacyMsg = `
+Dear ${data.pharmacy_name || 'Dispensary'} Team,
+
+The status of your prescription consignment has been updated:
+
+STATUS UPDATE:
+• Reference: ${data.reference}
+• New Status: ${statusText}
+• Destination: ${data.recipient_name || 'Recipient'} (${data.town || 'Active Route'})
+• Dispatcher Note: ${data.note || 'None'}
+
+LIVE MANIFEST TRACKING & POD:
+You can view the full chain of custody and signed POD here:
+${trackingUrl}
+
+Thank you for choosing HAYD.
+`.trim()
+
+      const pharmacyParams = {
+        subject: `Delivery Update: ${data.reference} is now ${statusText}`,
+        to_name: data.pharmacy_name || 'Dispensary Team',
+        name: data.pharmacy_name || 'Dispensary Team',
+        to_email: pharmacyTarget,
+        email: pharmacyTarget,
+        user_email: pharmacyTarget,
+        client_email: pharmacyTarget,
+        reply_to: 'healthatyourdoor.co@gmail.com',
+        from_name: 'HAYD Dispatch',
+        pharmacy_name: data.pharmacy_name || 'Your Dispensary',
+        tracking_code: data.reference,
+        tracking_link: trackingUrl,
+        message: pharmacyMsg,
+        message_preview: `Update on ${data.reference}: ${statusText}`,
+      }
+
+      await emailjs.send(SERVICE_ID, AUTOREPLY_TEMPLATE_ID, pharmacyParams, PUBLIC_KEY)
+      console.log('Status update email sent to pharmacy:', pharmacyTarget)
+    } catch (err) {
+      console.error('Failed to send status update to pharmacy:', err)
+    }
+  }
+
+  // 2. Notify Recipient
+  if (RECIPIENT_TEMPLATE_ID && recipientTarget) {
+    try {
+      await new Promise((r) => setTimeout(r, 600))
+
+      const recipientMsg = `
+Dear ${data.recipient_name || 'Customer'},
+
+Your prescription delivery from ${data.pharmacy_name || 'your pharmacy'} has an update:
+
+DELIVERY STATUS:
+• Current Status: ${statusText}
+• Courier Note: ${data.note || 'None'}
+• Tracking Reference: ${data.reference}
+
+TRACK COURIER LIVE:
+You can view the live progress of your courier here:
+${trackingUrl}
+
+IMPORTANT NOTICE:
+Prescription medicines are delivered directly to your door in tamper-evident packaging and may require a signature.
+
+If you have clinical questions regarding your medication, please contact ${data.pharmacy_name || 'your pharmacy'} directly.
+
+For delivery arrival assistance, you can contact HAYD dispatch on 07761 734423.
+`.trim()
+
+      const recipientParams = {
+        subject: `Delivery Update: Your prescription from ${data.pharmacy_name || 'your pharmacy'} is ${statusText}`,
+        to_name: data.recipient_name || 'Customer',
+        name: data.recipient_name || 'Customer',
+        to_email: recipientTarget,
+        email: recipientTarget,
+        user_email: recipientTarget,
+        client_email: recipientTarget,
+        reply_to: pharmacyTarget || 'healthatyourdoor.co@gmail.com',
+        from_name: `HAYD (Delivering for ${data.pharmacy_name || 'your pharmacy'})`,
+        pharmacy_name: data.pharmacy_name || 'Your Dispensary',
+        recipient_name: data.recipient_name || 'Customer',
+        tracking_code: data.reference,
+        tracking_link: trackingUrl,
+        message: recipientMsg,
+        message_preview: `Your prescription from ${data.pharmacy_name || 'your pharmacy'} is now ${statusText}`,
+      }
+
+      await emailjs.send(SERVICE_ID, RECIPIENT_TEMPLATE_ID, recipientParams, PUBLIC_KEY)
+      console.log('Status update email sent to recipient:', recipientTarget)
+    } catch (err) {
+      console.error('Failed to send status update to recipient:', err)
+    }
+  }
 }

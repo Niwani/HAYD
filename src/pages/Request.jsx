@@ -231,7 +231,10 @@ export default function Request() {
         status: 'received',
         town: form.town,
         recipient_name: form.patient_name,
+        recipient_email: form.recipient_email,
         pharmacy_name: form.pharmacy_name,
+        pharmacy_email: form.email,
+        delivery_address: `${form.address_line1}, ${form.town}, ${form.postcode}`,
         note: `Collection logged for ${form.pharmacy_name}. Dispatching courier to collect from dispensary.`,
       })
 
