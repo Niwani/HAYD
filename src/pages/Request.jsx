@@ -171,6 +171,7 @@ export default function Request() {
       if (!form.pickup_address.trim()) errs.pickup_address = 'Please specify the dispensary collection address.'
     } else if (step === 1) {
       if (!form.patient_name.trim()) errs.patient_name = 'Recipient or patient name is required.'
+      if (!form.recipient_email?.trim()) errs.recipient_email = 'Recipient email is required to send delivery tracking.'
       if (!form.address_line1.trim()) errs.address_line1 = 'Delivery address is required.'
       if (!form.postcode.trim()) errs.postcode = 'Postcode is required.'
     } else if (step === 2) {
@@ -430,10 +431,12 @@ export default function Request() {
                         id="recipient_email"
                         label="Recipient Email Address"
                         type="email"
+                        required
                         value={form.recipient_email}
                         onChange={(val) => update({ recipient_email: val })}
                         placeholder="patient@example.com"
                         helper="We will email the recipient their live tracking link and confirm delivery from your pharmacy."
+                        error={errors.recipient_email}
                       />
 
                       <div className="space-y-4">

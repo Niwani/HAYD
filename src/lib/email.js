@@ -6,9 +6,8 @@ export const EMAILJS_CONFIG = {
   SERVICE_ID: import.meta.env.VITE_EMAILJS_SERVICE_ID || '',
   // Template for sending notification to healthatyourdoor.co@gmail.com
   ADMIN_TEMPLATE_ID: import.meta.env.VITE_EMAILJS_TEMPLATE_ID || '',
-  // Template for confirmation back to the pharmacy
+  // Template for confirmation back to the pharmacy and recipient
   AUTOREPLY_TEMPLATE_ID: import.meta.env.VITE_EMAILJS_AUTOREPLY_TEMPLATE_ID || '',
-  // Optional: Specific template for the recipient / patient
   RECIPIENT_TEMPLATE_ID:
     import.meta.env.VITE_EMAILJS_RECIPIENT_TEMPLATE_ID ||
     import.meta.env.VITE_EMAILJS_AUTOREPLY_TEMPLATE_ID ||
@@ -31,6 +30,7 @@ export async function sendContactEmail(data) {
   }
 
   const templateParams = {
+    subject: `New Enquiry from ${data.name} (${data.enquiry_type || 'General'})`,
     name: data.name,
     from_name: data.name,
     reply_to: data.email,
@@ -48,6 +48,7 @@ export async function sendContactEmail(data) {
   if (AUTOREPLY_TEMPLATE_ID) {
     try {
       const autoReplyParams = {
+        subject: 'Thank you for contacting HAYD',
         to_name: data.name,
         name: data.name,
         to_email: data.email,
@@ -56,7 +57,7 @@ export async function sendContactEmail(data) {
         client_email: data.email,
         reply_to: 'healthatyourdoor.co@gmail.com',
         from_name: 'HAYD',
-        message: data.message,
+        message: `Thank you for contacting HAYD (Health At Your Door).\n\nWe have successfully received your enquiry. Our team is reviewing your message and will get back to you promptly.\n\nIf your enquiry is urgent, please call dispatch on 07761 734423.`,
         message_preview: data.message.length > 150 ? data.message.slice(0, 150) + '...' : data.message,
       }
       await emailjs.send(SERVICE_ID, AUTOREPLY_TEMPLATE_ID, autoReplyParams, PUBLIC_KEY)
@@ -70,7 +71,7 @@ export async function sendContactEmail(data) {
 
 /**
  * Send collection booking details via EmailJS
- * 1. Notification to Dispatch (healthatyourdoor.co@gmail.com)
+ * 1. Alert to Dispatch (healthatyourdoor.co@gmail.com)
  * 2. Confirmation to Pharmacy (data.email)
  * 3. Delivery & Tracking Notice to Recipient (data.recipient_email)
  * @param {Object} data
@@ -119,6 +120,7 @@ COLLECTION TIMING:
 `.trim()
 
   const adminParams = {
+    subject: `New Collection Booking: ${data.reference} (${data.pharmacy_name})`,
     name: data.pharmacy_name,
     from_name: `${data.pharmacy_name} [Booking ${data.reference}]`,
     reply_to: data.email,
@@ -129,6 +131,7 @@ COLLECTION TIMING:
     sent_at: new Date().toLocaleString('en-GB'),
   }
 
+  // 1. Send alert to dispatch
   const response = await emailjs.send(SERVICE_ID, ADMIN_TEMPLATE_ID, adminParams, PUBLIC_KEY)
 
   // -------------------------------------------------------------
@@ -136,6 +139,9 @@ COLLECTION TIMING:
   // -------------------------------------------------------------
   if (AUTOREPLY_TEMPLATE_ID && data.email) {
     try {
+      // 600ms pause to ensure clean sequencing
+      await new Promise((r) => setTimeout(r, 600))
+
       const pharmacyMessage = `
 Dear ${data.pharmacy_name} Dispensary Team,
 
@@ -158,6 +164,7 @@ Thank you for partnering with HAYD.
 `.trim()
 
       const pharmacyParams = {
+        subject: `Collection Confirmed: ${data.reference} — ${data.pharmacy_name}`,
         to_name: data.pharmacy_name,
         name: data.pharmacy_name,
         to_email: data.email,
@@ -174,16 +181,21 @@ Thank you for partnering with HAYD.
       }
 
       await emailjs.send(SERVICE_ID, AUTOREPLY_TEMPLATE_ID, pharmacyParams, PUBLIC_KEY)
+      console.log('Pharmacy confirmation email sent successfully to', data.email)
     } catch (err) {
-      console.warn('Pharmacy confirmation email failed:', err)
+      console.error('Pharmacy confirmation email failed:', err)
     }
   }
 
   // -------------------------------------------------------------
   // 3. RECIPIENT / PATIENT EMAIL (Sent to the customer)
   // -------------------------------------------------------------
-  if (RECIPIENT_TEMPLATE_ID && data.recipient_email) {
+  const recipientTarget = (data.recipient_email || '').trim()
+  if (RECIPIENT_TEMPLATE_ID && recipientTarget) {
     try {
+      // 600ms pause to ensure clean sequencing
+      await new Promise((r) => setTimeout(r, 600))
+
       const recipientMessage = `
 Dear ${data.patient_name},
 
@@ -209,12 +221,13 @@ For delivery arrival updates, you can contact HAYD dispatch on 07761 734423.
 `.trim()
 
       const recipientParams = {
+        subject: `Your prescription from ${data.pharmacy_name} is on its way (Ref: ${data.reference})`,
         to_name: data.patient_name,
         name: data.patient_name,
-        to_email: data.recipient_email,
-        email: data.recipient_email,
-        user_email: data.recipient_email,
-        client_email: data.recipient_email,
+        to_email: recipientTarget,
+        email: recipientTarget,
+        user_email: recipientTarget,
+        client_email: recipientTarget,
         reply_to: data.email || 'healthatyourdoor.co@gmail.com',
         from_name: `HAYD (Delivering for ${data.pharmacy_name})`,
         pharmacy_name: data.pharmacy_name,
@@ -226,8 +239,9 @@ For delivery arrival updates, you can contact HAYD dispatch on 07761 734423.
       }
 
       await emailjs.send(SERVICE_ID, RECIPIENT_TEMPLATE_ID, recipientParams, PUBLIC_KEY)
+      console.log('Recipient notification email sent successfully to', recipientTarget)
     } catch (err) {
-      console.warn('Recipient notification email failed:', err)
+      console.error('Recipient notification email failed:', err)
     }
   }
 
