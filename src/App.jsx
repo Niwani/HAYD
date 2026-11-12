@@ -8,6 +8,7 @@ import About from '@/pages/About'
 import Request from '@/pages/Request'
 import Track from '@/pages/Track'
 import Contact from '@/pages/Contact'
+import Dispatch from '@/pages/Dispatch'
 import Privacy from '@/pages/Privacy'
 import Terms from '@/pages/Terms'
 import NotFound from '@/pages/NotFound'
@@ -25,6 +26,8 @@ export default function App() {
           <Route path="/request" element={<Request />} />
           <Route path="/track" element={<Track />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/dispatch" element={<Dispatch />} />
+          <Route path="/staff" element={<Dispatch />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
         </Route>

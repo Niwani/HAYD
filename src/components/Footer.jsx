@@ -127,6 +127,9 @@ export function Footer() {
             <Link to="/terms" className="transition-colors hover:text-white">
               Terms
             </Link>
+            <Link to="/dispatch" className="opacity-40 transition-opacity hover:opacity-100 hover:text-white">
+              Staff Portal
+            </Link>
             <span>Registered in England &amp; Wales</span>
           </div>
         </div>

@@ -6,22 +6,13 @@ import {
   MapPin,
   Clock3,
   Phone,
-  ArrowRight,
   LoaderCircle,
   ShieldCheck,
-  PlusCircle,
   Copy,
-  Settings,
-  Sparkles,
-  RefreshCw,
-  Building2,
-  Package,
-  Mail,
-  Send,
 } from 'lucide-react'
 import { PageHero } from '@/components/SharedSections'
 import { storageClient } from '@/lib/storage'
-import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
+import { getTrackingUrl } from '@/lib/email'
 import { cn } from '@/lib/utils'
 
 const STATUS_STEPS = [
@@ -39,13 +30,6 @@ const STATUS_STEPS = [
   { id: 'delivered', label: 'Delivered & signed', detail: 'Signed for at doorstep with electronic POD.' },
 ]
 
-function generateTrackingCode() {
-  const bytes = new Uint8Array(6)
-  crypto.getRandomValues(bytes)
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  return `HAYD-${Array.from(bytes, (b) => chars[b % chars.length]).join('')}`
-}
-
 export default function Track() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialRef = searchParams.get('ref') || ''
@@ -54,41 +38,7 @@ export default function Track() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
-
-  // Dispatcher / Staff management mode
-  const [isDispatcherMode, setIsDispatcherMode] = useState(false)
-  const [recentList, setRecentList] = useState([])
   const [copiedLink, setCopiedLink] = useState(false)
-
-  // Dispatcher Create Form
-  const [newCodeForm, setNewCodeForm] = useState({
-    reference: generateTrackingCode(),
-    recipient_name: '',
-    recipient_email: '',
-    pharmacy_name: '',
-    pharmacy_email: '',
-    town: 'Birmingham',
-    status: 'received',
-    note: 'Consignment logged in dispatch system. Awaiting scheduled dispensary collection.',
-  })
-  const [createMsg, setCreateMsg] = useState('')
-
-  // Dispatcher Update Form for current result
-  const [updateStatus, setUpdateStatus] = useState('dispatched')
-  const [updateNote, setUpdateNote] = useState('')
-  const [updatePharmacyEmail, setUpdatePharmacyEmail] = useState('')
-  const [updateRecipientEmail, setUpdateRecipientEmail] = useState('')
-  const [updateLoading, setUpdateLoading] = useState(false)
-  const [updateMsg, setUpdateMsg] = useState('')
-
-  const loadRecent = async () => {
-    try {
-      const items = await storageClient.entities.TrackStatus.list()
-      setRecentList(items.slice(0, 8))
-    } catch {
-      // ignore
-    }
-  }
 
   const executeTrack = async (targetRef) => {
     const trimmed = (targetRef || '').trim().toUpperCase()
@@ -105,12 +55,7 @@ export default function Track() {
       const records = await storageClient.entities.TrackStatus.filter({ reference: trimmed })
       const list = Array.isArray(records) ? records : records?.items || []
       if (list.length) {
-        const item = list[0]
-        setResult(item)
-        setUpdateStatus(item.status || 'dispatched')
-        setUpdateNote(item.note || '')
-        setUpdatePharmacyEmail(item.pharmacy_email || item.email || '')
-        setUpdateRecipientEmail(item.recipient_email || '')
+        setResult(list[0])
       } else {
         setError('We could not find that reference. Check it matches your confirmation, or call dispatch.')
       }
@@ -127,7 +72,6 @@ export default function Track() {
       setReference(initialRef.toUpperCase())
       executeTrack(initialRef.toUpperCase())
     }
-    loadRecent()
   }, [initialRef])
 
   const handleTrackSubmit = (e) => {
@@ -135,63 +79,6 @@ export default function Track() {
     if (reference.trim()) {
       setSearchParams({ ref: reference.trim().toUpperCase() })
       executeTrack(reference.trim())
-    }
-  }
-
-  const handleCreateCode = async (e) => {
-    e.preventDefault()
-    try {
-      await storageClient.entities.TrackStatus.create({
-        ...newCodeForm,
-        updated_date: new Date().toISOString(),
-      })
-      setCreateMsg(`Created ${newCodeForm.reference} successfully!`)
-      loadRecent()
-      // Auto track the newly created code
-      setReference(newCodeForm.reference)
-      setSearchParams({ ref: newCodeForm.reference })
-      executeTrack(newCodeForm.reference)
-      // Reset form with a fresh new code
-      setNewCodeForm({
-        reference: generateTrackingCode(),
-        recipient_name: '',
-        recipient_email: '',
-        pharmacy_name: '',
-        pharmacy_email: '',
-        town: 'Birmingham',
-        status: 'received',
-        note: 'Consignment logged in dispatch system. Awaiting scheduled dispensary collection.',
-      })
-      setTimeout(() => setCreateMsg(''), 4000)
-    } catch {
-      setCreateMsg('Error creating code.')
-    }
-  }
-
-  const handleStatusUpdate = async () => {
-    if (!result?.reference) return
-    setUpdateLoading(true)
-    setUpdateMsg('')
-    try {
-      const patch = {
-        status: updateStatus,
-        note: updateNote,
-        pharmacy_email: updatePharmacyEmail,
-        recipient_email: updateRecipientEmail,
-      }
-      const updated = await storageClient.entities.TrackStatus.update(result.reference, patch)
-      setResult(updated)
-      loadRecent()
-
-      // Send status update email to pharmacy and recipient
-      await sendStatusUpdateEmail(updated)
-      setUpdateMsg('Status updated & notification emails dispatched!')
-      setTimeout(() => setUpdateMsg(''), 5000)
-    } catch (err) {
-      console.error(err)
-      setUpdateMsg('Updated locally (error dispatching email).')
-    } finally {
-      setUpdateLoading(false)
     }
   }
 
@@ -218,30 +105,12 @@ export default function Track() {
           <div className="space-y-8">
             {/* Search Card */}
             <form onSubmit={handleTrackSubmit} className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-sm">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="reference"
-                  className="text-[0.75rem] font-bold uppercase tracking-[0.12em] text-muted-foreground"
-                >
-                  Enter Manifest / Tracking Reference
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDispatcherMode(!isDispatcherMode)
-                    loadRecent()
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium transition-colors',
-                    isDispatcherMode
-                      ? 'bg-accent text-accent-foreground'
-                      : 'border border-border text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <Settings className="h-3 w-3" />
-                  {isDispatcherMode ? 'Staff Mode Active' : 'Staff Dispatcher Tool'}
-                </button>
-              </div>
+              <label
+                htmlFor="reference"
+                className="text-[0.75rem] font-bold uppercase tracking-[0.12em] text-muted-foreground block"
+              >
+                Enter Manifest / Tracking Reference
+              </label>
 
               <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                 <input
@@ -374,273 +243,6 @@ export default function Track() {
                         )
                       })}
                     </ol>
-                  </div>
-                )}
-
-                {/* Dispatcher Inline Status Editor */}
-                {isDispatcherMode && (
-                  <div className="mt-8 rounded-xl border border-accent/40 bg-accent/5 p-5 space-y-4">
-                    <div className="flex items-center justify-between border-b border-accent/20 pb-3">
-                      <span className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                        <Send className="h-3.5 w-3.5" /> Staff Dispatcher: Update Status & Email Notification
-                      </span>
-                      {updateMsg && <span className="text-xs font-bold text-accent">{updateMsg}</span>}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-[0.72rem] font-semibold text-foreground/80">New Status</label>
-                        <select
-                          value={updateStatus}
-                          onChange={(e) => setUpdateStatus(e.target.value)}
-                          className="h-10 w-full rounded-lg border border-input bg-card px-3 text-xs font-medium"
-                        >
-                          <option value="received">1. Request received</option>
-                          <option value="verifying">2. Pharmacist verification</option>
-                          <option value="dispatched">3. Out for delivery (Courier collected)</option>
-                          <option value="delivered">4. Delivered & signed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[0.72rem] font-semibold text-foreground/80">Operational Note</label>
-                        <input
-                          type="text"
-                          value={updateNote}
-                          onChange={(e) => setUpdateNote(e.target.value)}
-                          placeholder="e.g. Courier en route, ETA 15 mins"
-                          className="h-10 w-full rounded-lg border border-input bg-card px-3 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 pt-1">
-                      <div className="space-y-1">
-                        <label className="text-[0.72rem] font-semibold text-foreground/80">
-                          Pharmacy Email (for update alert)
-                        </label>
-                        <input
-                          type="email"
-                          value={updatePharmacyEmail}
-                          onChange={(e) => setUpdatePharmacyEmail(e.target.value)}
-                          placeholder="pharmacy@dispensary.co.uk"
-                          className="h-9 w-full rounded-lg border border-input bg-card px-3 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[0.72rem] font-semibold text-foreground/80">
-                          Recipient Email (for update alert)
-                        </label>
-                        <input
-                          type="email"
-                          value={updateRecipientEmail}
-                          onChange={(e) => setUpdateRecipientEmail(e.target.value)}
-                          placeholder="patient@example.com"
-                          className="h-9 w-full rounded-lg border border-input bg-card px-3 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleStatusUpdate}
-                      disabled={updateLoading}
-                      className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-xs font-bold text-accent-foreground hover:bg-accent/90 disabled:opacity-50"
-                    >
-                      {updateLoading ? (
-                        <>
-                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                          Sending emails & updating…
-                        </>
-                      ) : (
-                        'Save Status & Send Email Notifications'
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Staff Dispatcher Management Box */}
-            {isDispatcherMode && (
-              <div className="rounded-2xl border-2 border-accent/40 bg-card p-6 md:p-8 space-y-6 shadow-md animate-in fade-in">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground font-bold">
-                    <PlusCircle className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-lg font-bold text-foreground">
-                      Generate New Tracking Code (Manual / Phone Booking)
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Use this when a pharmacy calls or emails you directly to book a collection.
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleCreateCode} className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Tracking Reference Code</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newCodeForm.reference}
-                          onChange={(e) => setNewCodeForm({ ...newCodeForm, reference: e.target.value.toUpperCase() })}
-                          className="h-10 flex-1 rounded-lg border border-input bg-background px-3 font-mono text-sm font-bold"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setNewCodeForm({ ...newCodeForm, reference: generateTrackingCode() })}
-                          className="rounded-lg border border-border px-3 text-xs hover:bg-secondary"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Pharmacy Name</label>
-                      <input
-                        type="text"
-                        value={newCodeForm.pharmacy_name}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, pharmacy_name: e.target.value })}
-                        placeholder="e.g. Well Pharmacy, Church St"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Pharmacy Email (for alerts)</label>
-                      <input
-                        type="email"
-                        value={newCodeForm.pharmacy_email}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, pharmacy_email: e.target.value })}
-                        placeholder="pharmacy@dispensary.co.uk"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Recipient / Patient Name</label>
-                      <input
-                        type="text"
-                        value={newCodeForm.recipient_name}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, recipient_name: e.target.value })}
-                        placeholder="e.g. Robert Hughes"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Recipient Email (for tracking)</label>
-                      <input
-                        type="email"
-                        value={newCodeForm.recipient_email}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, recipient_email: e.target.value })}
-                        placeholder="patient@example.com"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Destination Town</label>
-                      <input
-                        type="text"
-                        value={newCodeForm.town}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, town: e.target.value })}
-                        placeholder="e.g. Birmingham, Solihull"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Initial Status</label>
-                      <select
-                        value={newCodeForm.status}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, status: e.target.value })}
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs font-medium"
-                      >
-                        <option value="received">1. Request received</option>
-                        <option value="verifying">2. Pharmacist verification</option>
-                        <option value="dispatched">3. Out for delivery (Courier collected)</option>
-                        <option value="delivered">4. Delivered & signed</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-foreground/80">Operational Note</label>
-                      <input
-                        type="text"
-                        value={newCodeForm.note}
-                        onChange={(e) => setNewCodeForm({ ...newCodeForm, note: e.target.value })}
-                        placeholder="e.g. Courier en route to pharmacy counter"
-                        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2">
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-2.5 text-xs font-bold text-accent-foreground hover:bg-accent/90"
-                    >
-                      <PlusCircle className="h-3.5 w-3.5" />
-                      Save & Activate Tracking Code
-                    </button>
-                    {createMsg && <span className="text-xs font-bold text-accent">{createMsg}</span>}
-                  </div>
-                </form>
-
-                {/* Recent tracked deliveries quick list */}
-                {recentList.length > 0 && (
-                  <div className="border-t border-border pt-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                      Recently Created Consignments
-                    </h4>
-                    <div className="space-y-2">
-                      {recentList.map((item) => (
-                        <div
-                          key={item.reference}
-                          className="flex items-center justify-between rounded-lg border border-border/70 bg-secondary/30 p-2.5 text-xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono font-bold text-foreground">{item.reference}</span>
-                            <span className="rounded bg-accent/15 px-2 py-0.5 text-[0.7rem] font-semibold text-accent uppercase">
-                              {item.status}
-                            </span>
-                            <span className="text-muted-foreground text-[0.72rem]">{item.town}</span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                setReference(item.reference)
-                                setSearchParams({ ref: item.reference })
-                                executeTrack(item.reference)
-                              }}
-                              className="font-semibold text-primary hover:underline text-[0.72rem]"
-                            >
-                              View / Edit
-                            </button>
-                            <button
-                              onClick={() => copyDirectLink(item.reference)}
-                              className="text-muted-foreground hover:text-foreground text-[0.72rem]"
-                              title="Copy link"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
               </div>
