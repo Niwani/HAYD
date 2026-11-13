@@ -501,3 +501,4 @@ export function StaffChatWidget({ currentStaff }) {
     </div>
   )
 }
+

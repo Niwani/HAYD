@@ -32,6 +32,9 @@ import {
   ThermometerSnowflake,
   ArrowRight,
   UserCheck,
+  Printer,
+  Scan,
+  FileCheck,
 } from 'lucide-react'
 import { PageHero } from '@/components/SharedSections'
 import { storageClient } from '@/lib/storage'
@@ -46,6 +49,8 @@ import {
 } from '@/lib/staffAuth'
 import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
 import AdminBookingSteps from '@/components/AdminBookingSteps'
+import ParcelLabelModal from '@/components/ParcelLabelModal'
+import DeliveryScanModal from '@/components/DeliveryScanModal'
 import { StaffChatWidget } from '@/components/StaffChatWidget'
 import { cn } from '@/lib/utils'
 import haydIconNavy from '@/assets/hayd-icon-navy.png'
@@ -158,6 +163,10 @@ export default function Dispatch() {
 
   // Multi-step booking intake form
   const [showManualCreator, setShowManualCreator] = useState(false)
+
+  // Anti-misdelivery: Sticker Printing & Doorstep Scan Modals
+  const [labelModalItem, setLabelModalItem] = useState(null)
+  const [scanModalItem, setScanModalItem] = useState(null)
 
   // 1. Initial Load & Session Check
   useEffect(() => {
@@ -311,6 +320,19 @@ export default function Dispatch() {
     } finally {
       setUpdateLoading(false)
     }
+  }
+
+  // Handle Scan-Verified Doorstep Delivery with Electronic POD
+  const handleConfirmVerifiedDelivery = async (targetItem, updateData) => {
+    await handleStatusSubmit(
+      targetItem,
+      updateData.status || 'delivered',
+      updateData.note,
+      {
+        delivery_time: updateData.delivery_time,
+        pod_evidence: updateData.pod_evidence,
+      }
+    )
   }
 
   // Pre-fill note aligned with selected status level
@@ -863,6 +885,15 @@ export default function Dispatch() {
                           )}
 
                           <button
+                            onClick={() => setLabelModalItem(item)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-secondary transition-colors"
+                            title="Print physical 4x6 / thermal barcode sticker"
+                          >
+                            <Printer className="h-3.5 w-3.5 text-[#0d9488]" />
+                            Print Sticker
+                          </button>
+
+                          <button
                             onClick={() => copyTrackingLink(item.reference)}
                             className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground"
                             title="Copy customer tracking URL"
@@ -1020,11 +1051,23 @@ export default function Dispatch() {
                               <Share2 className="h-3 w-3" />
                               WhatsApp Staff
                             </button>
+
+                            {/* Admin Field Scan Handover */}
+                            {item.status !== 'delivered' && (
+                              <button
+                                onClick={() => setScanModalItem(item)}
+                                className="inline-flex items-center gap-1 rounded-xl border border-emerald-600/40 bg-emerald-600/10 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-600/20 transition-colors"
+                                title="Scan parcel sticker to verify and record POD"
+                              >
+                                <Scan className="h-3 w-3" />
+                                Scan & Deliver
+                              </button>
+                            )}
                           </div>
                         ) : (
-                          /* STAFF COURIER CONTROLS: Mark Collected or Delivered */
+                          /* STAFF COURIER CONTROLS: Anti-misdelivery Scan & POD Handover */
                           <div className="flex flex-wrap items-center gap-2">
-                            {item.status !== 'delivered' && (
+                            {item.status !== 'delivered' ? (
                               <>
                                 {item.status !== 'dispatched' ? (
                                   <button
@@ -1046,24 +1089,25 @@ export default function Dispatch() {
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => {
-                                      const now = new Date()
-                                      const text = getStatusTextForLevel('delivered', item, currentStaff)
-                                      handleStatusSubmit(
-                                        item,
-                                        'delivered',
-                                        text,
-                                        { delivery_time: now.toISOString() }
-                                      )
-                                    }}
+                                    onClick={() => setScanModalItem(item)}
                                     disabled={updateLoading}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#0d9488] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0d9488]/90 transition-colors shadow-sm"
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md active:scale-95"
                                   >
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    Mark Delivered & Signed
+                                    <Scan className="h-4 w-4" />
+                                    Scan Barcode to Deliver
                                   </button>
                                 )}
                               </>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600/10 border border-emerald-600/20 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>Delivered & Signed</span>
+                                {item.pod_evidence && (
+                                  <span className="font-normal text-[0.68rem] text-muted-foreground ml-1">
+                                    (Barcode Verified POD)
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -1207,6 +1251,26 @@ export default function Dispatch() {
           </div>
         </div>
       </section>
+
+      {/* Anti-Misdelivery: Printable Sticker Label Modal */}
+      {labelModalItem && (
+        <ParcelLabelModal
+          item={labelModalItem}
+          isOpen={Boolean(labelModalItem)}
+          onClose={() => setLabelModalItem(null)}
+        />
+      )}
+
+      {/* Doorstep Scan-to-Match & POD Verification Modal */}
+      {scanModalItem && (
+        <DeliveryScanModal
+          item={scanModalItem}
+          isOpen={Boolean(scanModalItem)}
+          onClose={() => setScanModalItem(null)}
+          onConfirmDelivery={handleConfirmVerifiedDelivery}
+          currentStaff={currentStaff}
+        />
+      )}
 
       {/* Floating Staff Internal Communications & Dispatch Radio */}
       <StaffChatWidget currentStaff={currentStaff} />

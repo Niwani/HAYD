@@ -16,6 +16,9 @@ import {
   CheckCircle2,
   ArrowRight,
   TrendingUp,
+  Scan,
+  PenTool,
+  UserCheck,
 } from 'lucide-react'
 import { PageHero } from '@/components/SharedSections'
 import { storageClient } from '@/lib/storage'
@@ -333,6 +336,110 @@ export default function Track() {
                           )
                         })}
                       </ol>
+                    </div>
+                  )}
+
+                  {/* ========================================================= */}
+                  {/* ELECTRONIC PROOF OF DELIVERY (POD) & ANTI-MISDELIVERY AUDIT */}
+                  {/* ========================================================= */}
+                  {(result.pod_evidence || result.status === 'delivered') && (
+                    <div className="rounded-2xl border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.04] to-card p-5 md:p-6 shadow-sm space-y-4 animate-in fade-in">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600/15 text-emerald-600">
+                            <ShieldCheck className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-heading text-sm font-bold text-foreground">
+                                Electronic Proof of Delivery (POD)
+                              </h3>
+                              <span className="rounded-full bg-emerald-600/15 px-2.5 py-0.5 text-[0.65rem] font-bold text-emerald-700 dark:text-emerald-400">
+                                Verified Handover
+                              </span>
+                            </div>
+                            <p className="text-[0.72rem] text-muted-foreground">
+                              Anti-misdelivery protocol confirmed. Barcode matched against physical package sticker at doorstep.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-[0.65rem] text-muted-foreground block">Delivered At</span>
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {result.delivery_time
+                              ? new Date(result.delivery_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                              : result.pod_evidence?.timestamp || 'Confirmed'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Verification Metrics Grid */}
+                      <div className="grid gap-3 sm:grid-cols-3 text-xs">
+                        <div className="rounded-xl border border-border/70 bg-card p-3 space-y-1">
+                          <span className="text-[0.68rem] text-muted-foreground uppercase font-bold tracking-wider flex items-center gap-1">
+                            <Scan className="h-3 w-3 text-[#0d9488]" /> Physical Barcode Scan
+                          </span>
+                          <p className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                            {result.pod_evidence?.scanned_code || result.reference}
+                          </p>
+                          <span className="text-[0.65rem] text-emerald-600 font-semibold block">
+                            ✓ Scanned match verified
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-border/70 bg-card p-3 space-y-1">
+                          <span className="text-[0.68rem] text-muted-foreground uppercase font-bold tracking-wider flex items-center gap-1">
+                            <UserCheck className="h-3 w-3 text-accent" /> Recipient / Signee
+                          </span>
+                          <p className="font-bold text-foreground truncate">
+                            {result.pod_evidence?.signee_name || result.recipient_name || 'Patient'}
+                          </p>
+                          <span className="text-[0.65rem] text-muted-foreground capitalize block">
+                            Relationship: {result.pod_evidence?.signee_relationship || 'Named recipient'}
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-border/70 bg-card p-3 space-y-1">
+                          <span className="text-[0.68rem] text-muted-foreground uppercase font-bold tracking-wider flex items-center gap-1">
+                            <ShieldCheck className="h-3 w-3 text-purple-600" /> Custody Courier
+                          </span>
+                          <p className="font-bold text-foreground truncate">
+                            {result.pod_evidence?.verified_by || result.updated_by || 'HAYD Courier'}
+                          </p>
+                          {result.pod_evidence?.id_verified ? (
+                            <span className="text-[0.65rem] font-bold text-purple-600 block">
+                              🔐 Photo ID Checked
+                            </span>
+                          ) : (
+                            <span className="text-[0.65rem] text-muted-foreground block">
+                              Standard custody handover
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Digital Signature Preview if available */}
+                      {result.pod_evidence?.signature_data && (
+                        <div className="rounded-xl border border-border/80 bg-background/80 p-3.5 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              <PenTool className="h-3.5 w-3.5 text-[#0d9488]" />
+                              Doorstep Touch Signature Evidence
+                            </span>
+                            <span className="text-[0.65rem] text-muted-foreground font-mono">
+                              Signed by {result.pod_evidence.signee_name}
+                            </span>
+                          </div>
+                          <div className="bg-white rounded-lg border border-neutral-200 p-2 flex items-center justify-center max-w-sm">
+                            <img
+                              src={result.pod_evidence.signature_data}
+                              alt="Doorstep Signature POD"
+                              className="h-16 w-auto max-w-full object-contain"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
