@@ -69,6 +69,13 @@ function generateDispatchSlip(item, courier) {
   const cat = Array.isArray(item.categories) ? item.categories.join(', ') : 'Standard Ambient'
   const trackingUrl = getTrackingUrl(item.reference)
 
+  const distStr = item.distance_miles ? `${item.distance_miles} miles` : 'Direct route'
+  const transitStr = item.transit_duration_mins ? `~${item.transit_duration_mins} mins transit` : '~15 mins transit'
+  const etaStr = item.estimated_delivery_window || 'Standard delivery round'
+  const collectStr = item.collection_time
+    ? new Date(item.collection_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : 'Awaiting counter pickup'
+
   return `*HAYD DISPATCH ASSIGNMENT*
 Ref: ${item.reference}
 Assigned to: ${courier?.name || item.assigned_name || 'Courier'}
@@ -82,6 +89,11 @@ Phone: ${item.pharmacy_phone || '07761 734423'}
 Recipient: ${item.recipient_name || 'Patient'}
 Address: ${delivery}
 Phone: ${item.recipient_phone || 'N/A'}
+
+*Route & Timing:*
+• Distance: ${distStr} (${transitStr})
+• Collection Time: ${collectStr}
+• Estimated Delivery Window: ${etaStr}
 
 *Handling:* ${cat} (${item.package_count || '1 parcel'})
 *Instructions:* ${item.note || 'Hand-to-hand delivery. Confirm signature.'}
@@ -230,7 +242,12 @@ export default function Dispatch() {
   }
 
   // Handle Status Update (Courier or Admin)
-  const handleStatusSubmit = async (itemToUpdate = selectedItem, customStatus = null, customNote = null) => {
+  const handleStatusSubmit = async (
+    itemToUpdate = selectedItem,
+    customStatus = null,
+    customNote = null,
+    extraPatch = {}
+  ) => {
     const target = itemToUpdate || selectedItem
     if (!target?.reference) return
 
@@ -238,16 +255,28 @@ export default function Dispatch() {
     setUpdateSuccess('')
 
     const finalStatus = customStatus || updateStatus
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
     const finalNote =
       customNote ||
       updateNote ||
-      `Status updated to ${finalStatus} by ${currentStaff.name}.`
+      `Status updated to ${finalStatus} by ${currentStaff.name} at ${timeStr}.`
 
     try {
       const patch = {
         status: finalStatus,
         note: finalNote,
-        updated_date: new Date().toISOString(),
+        updated_by: `${currentStaff.name} (${currentStaff.badge})`,
+        updated_date: now.toISOString(),
+        ...extraPatch,
+      }
+
+      if (finalStatus === 'dispatched' && !target.collection_time && !patch.collection_time) {
+        patch.collection_time = now.toISOString()
+      }
+      if (finalStatus === 'delivered' && !target.delivery_time && !patch.delivery_time) {
+        patch.delivery_time = now.toISOString()
       }
 
       const updated = await storageClient.entities.TrackStatus.update(target.reference, patch)
@@ -263,7 +292,7 @@ export default function Dispatch() {
           setUpdateSuccess('Status updated in system (email service throttle).')
         }
       } else {
-        setUpdateSuccess(`Status updated to ${finalStatus}!`)
+        setUpdateSuccess(`Status updated to ${finalStatus} at ${timeStr}!`)
       }
 
       setTimeout(() => setUpdateSuccess(''), 4500)
@@ -1070,6 +1099,36 @@ export default function Dispatch() {
                         </div>
                       </div>
 
+                      {/* Route Distance, Collection Time & Live ETA Bar */}
+                      <div className="rounded-xl border border-border/70 bg-gradient-to-r from-secondary/40 to-background p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                          <span className="inline-flex items-center gap-1.5 font-bold text-foreground">
+                            <Clock3 className="h-3.5 w-3.5 text-[#0d9488]" />
+                            {item.status === 'delivered'
+                              ? `Delivered: ${item.delivery_time ? new Date(item.delivery_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'Confirmed'}`
+                              : item.status === 'dispatched'
+                              ? `ETA: ${item.estimated_delivery_window || 'En route'}`
+                              : `Est. Window: ${item.estimated_delivery_window || 'Standard round'}`}
+                          </span>
+
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Navigation className="h-3 w-3 text-accent" />
+                            <strong>{item.distance_miles ? `${item.distance_miles} miles` : 'Direct route'}</strong> (~{item.transit_duration_mins || 15} mins transit)
+                          </span>
+
+                          {item.collection_time && (
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              <Package className="h-3 w-3 text-[#0d9488]" />
+                              Collected: <strong>{new Date(item.collection_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</strong>
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="text-[0.68rem] text-muted-foreground font-mono">
+                          Updated: {new Date(item.updated_date || Date.now()).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
                       {/* Courier / Dispatch Note */}
                       {item.note && (
                         <div className="rounded-xl bg-background border border-border/60 px-3.5 py-2 text-xs text-muted-foreground flex items-center gap-2">
@@ -1127,13 +1186,16 @@ export default function Dispatch() {
                               <>
                                 {item.status !== 'dispatched' ? (
                                   <button
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const now = new Date()
+                                      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
                                       handleStatusSubmit(
                                         item,
                                         'dispatched',
-                                        `Collected from dispensary by ${currentStaff.name}. Temperature log verified.`
+                                        `Collected from dispensary by ${currentStaff.name} at ${timeStr}. Validated thermal carrier active.`,
+                                        { collection_time: now.toISOString() }
                                       )
-                                    }
+                                    }}
                                     disabled={updateLoading}
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
                                   >
@@ -1142,13 +1204,16 @@ export default function Dispatch() {
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const now = new Date()
+                                      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
                                       handleStatusSubmit(
                                         item,
                                         'delivered',
-                                        `Handed directly to patient by ${currentStaff.name}. Signed for on doorstep.`
+                                        `Handed directly to patient by ${currentStaff.name} at ${timeStr}. Electronic POD signature verified.`,
+                                        { delivery_time: now.toISOString() }
                                       )
-                                    }
+                                    }}
                                     disabled={updateLoading}
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#0d9488] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0d9488]/90 transition-colors shadow-sm"
                                   >

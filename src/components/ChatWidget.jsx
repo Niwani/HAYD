@@ -50,9 +50,32 @@ async function resolveBotResponse(userMsg) {
         }
         const statusText = statusMap[item.status] || item.status
 
+        const etaLine = item.status === 'delivered'
+          ? `• **Delivered At:** ${item.delivery_time ? new Date(item.delivery_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Confirmed'}`
+          : `• **Estimated Delivery:** ${item.estimated_delivery_window || 'Standard delivery round'}`
+
+        const collectLine = item.collection_time
+          ? `• **Collection Time:** ${new Date(item.collection_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : null
+
+        const distLine = item.distance_miles
+          ? `• **Route Distance:** ${item.distance_miles} miles (~${item.transit_duration_mins || 15} mins transit)`
+          : null
+
+        const details = [
+          `• **Status:** ${statusText}`,
+          etaLine,
+          collectLine,
+          distLine,
+          `• **Destination:** ${item.recipient_name || 'Patient'} (${item.town || 'Active route'})`,
+          `• **Dispensary:** ${item.pharmacy_name || 'Partner pharmacy'}`,
+          `• **Latest Note:** ${item.note || 'Collection logged in system'}`,
+          `• **Last Updated:** ${new Date(item.updated_date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        ].filter(Boolean).join('\n')
+
         return {
-          text: `Found active consignment **${item.reference}**:\n\n• **Status:** ${statusText}\n• **Destination:** ${item.recipient_name || 'Patient'} (${item.town || 'Active route'})\n• **Dispensary:** ${item.pharmacy_name || 'Partner pharmacy'}\n• **Latest Courier Note:** ${item.note || 'Collection logged in system'}\n• **Last Updated:** ${new Date(item.updated_date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-          cta: { text: 'View full timeline on tracking page', to: `/track?ref=${item.reference}` },
+          text: `Found active consignment **${item.reference}**:\n\n${details}`,
+          cta: { text: 'View live map & timeline on tracking page', to: `/track?ref=${item.reference}` },
         }
       }
     } catch {

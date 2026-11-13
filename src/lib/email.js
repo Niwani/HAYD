@@ -289,6 +289,16 @@ export async function sendStatusUpdateEmail(data) {
   // 1. Notify Pharmacy
   if (AUTOREPLY_TEMPLATE_ID && pharmacyTarget) {
     try {
+      const updateTime = new Date(data.updated_date || Date.now()).toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const collectTime = data.collection_time
+        ? new Date(data.collection_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : 'Pending counter pickup'
+      const etaWindow = data.estimated_delivery_window || 'Standard delivery round'
+      const routeDist = data.distance_miles ? `${data.distance_miles} miles` : 'Direct route'
+
       const pharmacyMsg = `
 Dear ${data.pharmacy_name || 'Dispensary'} Team,
 
@@ -298,7 +308,11 @@ STATUS UPDATE:
 • Reference: ${data.reference}
 • New Status: ${statusText}
 • Destination: ${data.recipient_name || 'Recipient'} (${data.town || 'Active Route'})
-• Dispatcher Note: ${data.note || 'None'}
+• Time of Update: ${updateTime}
+• Time of Collection: ${collectTime}
+• Route Distance: ${routeDist}
+• Estimated Delivery Window: ${etaWindow}
+• Dispatcher/Courier Note: ${data.note || 'None'}
 
 LIVE MANIFEST TRACKING & POD:
 You can view the full chain of custody and signed POD here:
@@ -336,13 +350,25 @@ Thank you for choosing HAYD.
     try {
       await new Promise((r) => setTimeout(r, 600))
 
+      const updateTime = new Date(data.updated_date || Date.now()).toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const collectTime = data.collection_time
+        ? new Date(data.collection_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : null
+      const etaWindow = data.estimated_delivery_window || 'Standard delivery round'
+
       const recipientMsg = `
 Dear ${data.recipient_name || 'Customer'},
 
 Your prescription delivery from ${data.pharmacy_name || 'your pharmacy'} has an update:
 
-DELIVERY STATUS:
+DELIVERY STATUS & TIMELINE:
 • Current Status: ${statusText}
+• Estimated Delivery Window: ${etaWindow}
+${collectTime ? `• Collected from Pharmacy: ${collectTime}` : ''}
+• Time of Status Update: ${updateTime}
 • Courier Note: ${data.note || 'None'}
 • Tracking Reference: ${data.reference}
 
