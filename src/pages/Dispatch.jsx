@@ -46,6 +46,7 @@ import {
 } from '@/lib/staffAuth'
 import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
 import AdminBookingSteps from '@/components/AdminBookingSteps'
+import { StaffChatWidget } from '@/components/StaffChatWidget'
 import { cn } from '@/lib/utils'
 import haydIconNavy from '@/assets/hayd-icon-navy.png'
 
@@ -1206,6 +1207,9 @@ export default function Dispatch() {
           </div>
         </div>
       </section>
+
+      {/* Floating Staff Internal Communications & Dispatch Radio */}
+      <StaffChatWidget currentStaff={currentStaff} />
     </>
   )
 }

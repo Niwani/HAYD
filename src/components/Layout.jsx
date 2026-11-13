@@ -25,6 +25,18 @@ export function ScrollToTop() {
 }
 
 export function Layout() {
+  const { pathname } = useLocation()
+  const isStaffPortal = pathname === '/dispatch' || pathname === '/staff'
+
+  // Staff accounts/dispatch portal renders standalone without public header, footer, or public AI chat
+  if (isStaffPortal) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Outlet />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
