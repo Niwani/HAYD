@@ -45,6 +45,7 @@ import {
   getStaffById,
 } from '@/lib/staffAuth'
 import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
+import AdminBookingSteps from '@/components/AdminBookingSteps'
 import { cn } from '@/lib/utils'
 import haydIconNavy from '@/assets/hayd-icon-navy.png'
 
@@ -129,26 +130,8 @@ export default function Dispatch() {
   const [copiedCode, setCopiedCode] = useState('')
   const [copiedSlipRef, setCopiedSlipRef] = useState('')
 
-  // Manual code creator form
+  // Multi-step booking intake form
   const [showManualCreator, setShowManualCreator] = useState(false)
-  const [newCode, setNewCode] = useState({
-    reference: generateTrackingCode(),
-    pharmacy_name: '',
-    pharmacy_email: '',
-    pharmacy_phone: '',
-    pickup_address: '',
-    recipient_name: '',
-    recipient_email: '',
-    recipient_phone: '',
-    delivery_address: '',
-    town: 'Birmingham',
-    assigned_to: '',
-    status: 'received',
-    package_count: '1 parcel',
-    categories: ['ambient'],
-    note: 'Consignment logged in dispatch system. Awaiting scheduled collection from pharmacy counter.',
-  })
-  const [createMsg, setCreateMsg] = useState('')
 
   // 1. Initial Load & Session Check
   useEffect(() => {
@@ -301,48 +284,6 @@ export default function Dispatch() {
       setUpdateSuccess('Error updating status.')
     } finally {
       setUpdateLoading(false)
-    }
-  }
-
-  // Handle Manual Code Creation
-  const handleCreateManualCode = async (e) => {
-    e.preventDefault()
-    try {
-      const assignedCourier = newCode.assigned_to ? getStaffById(newCode.assigned_to) : null
-      const created = await storageClient.entities.TrackStatus.create({
-        ...newCode,
-        assigned_to: newCode.assigned_to || null,
-        assigned_name: assignedCourier ? `${assignedCourier.name} (${assignedCourier.badge})` : null,
-        assigned_at: newCode.assigned_to ? new Date().toISOString() : null,
-        updated_date: new Date().toISOString(),
-      })
-
-      setCreateMsg(`Consignment ${created.reference} generated & activated!`)
-      setShowManualCreator(false)
-      await loadConsignments()
-      setSelectedItem(created)
-
-      // Reset form
-      setNewCode({
-        reference: generateTrackingCode(),
-        pharmacy_name: '',
-        pharmacy_email: '',
-        pharmacy_phone: '',
-        pickup_address: '',
-        recipient_name: '',
-        recipient_email: '',
-        recipient_phone: '',
-        delivery_address: '',
-        town: 'Birmingham',
-        assigned_to: '',
-        status: 'received',
-        package_count: '1 parcel',
-        categories: ['ambient'],
-        note: 'Consignment logged in dispatch system. Awaiting scheduled collection from pharmacy counter.',
-      })
-      setTimeout(() => setCreateMsg(''), 5000)
-    } catch {
-      setCreateMsg('Error creating consignment.')
     }
   }
 
@@ -605,7 +546,7 @@ export default function Dispatch() {
                     className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
                   >
                     <PlusCircle className="h-4 w-4" />
-                    {showManualCreator ? 'Hide Booking Form' : 'New Manual Booking'}
+                    {showManualCreator ? 'Hide Booking Steps' : 'Book a Collection (4 Steps)'}
                   </button>
                   <button
                     onClick={() => loadConsignments()}
@@ -748,149 +689,17 @@ export default function Dispatch() {
           )}
 
           {/* ========================================================= */}
-          {/* MANUAL BOOKING FORM (Expandable for Admin) */}
+          {/* STEPPED DISPENSARY BOOKING (4 STEPS IDENTICAL TO WEBSITE) */}
           {/* ========================================================= */}
           {currentStaff.role === 'admin' && showManualCreator && (
-            <div className="rounded-3xl border-2 border-primary/20 bg-card p-6 md:p-8 shadow-lg space-y-6">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold">
-                    <PlusCircle className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-base font-bold text-foreground">
-                      New Manual Booking / Phone Collection
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Generate an off-book delivery code and assign it directly to a staff courier.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowManualCreator(false)}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Close
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateManualCode} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Tracking Code</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newCode.reference}
-                        onChange={(e) => setNewCode({ ...newCode, reference: e.target.value.toUpperCase() })}
-                        className="h-10 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-xs font-bold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setNewCode({ ...newCode, reference: generateTrackingCode() })}
-                        className="rounded-xl border border-border px-3 text-xs hover:bg-secondary"
-                        title="Generate code"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Assign to Courier</label>
-                    <select
-                      value={newCode.assigned_to}
-                      onChange={(e) => setNewCode({ ...newCode, assigned_to: e.target.value })}
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs"
-                    >
-                      <option value="">Leave Unassigned (Pool)</option>
-                      {couriers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.badge})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Destination Town</label>
-                    <input
-                      type="text"
-                      value={newCode.town}
-                      onChange={(e) => setNewCode({ ...newCode, town: e.target.value })}
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2 pt-1">
-                  <div className="rounded-2xl border border-border bg-secondary/30 p-4 space-y-3">
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <Building2 className="h-3.5 w-3.5 text-[#0d9488]" /> Dispensary Pickup Details
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Dispensary Name (e.g. Well Pharmacy)"
-                      value={newCode.pharmacy_name}
-                      onChange={(e) => setNewCode({ ...newCode, pharmacy_name: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Pickup Address & Postcode"
-                      value={newCode.pickup_address}
-                      onChange={(e) => setNewCode({ ...newCode, pickup_address: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Dispensary Email (for dispatch updates)"
-                      value={newCode.pharmacy_email}
-                      onChange={(e) => setNewCode({ ...newCode, pharmacy_email: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-border bg-secondary/30 p-4 space-y-3">
-                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-[#0d9488]" /> Recipient Delivery Details
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Recipient Full Name"
-                      value={newCode.recipient_name}
-                      onChange={(e) => setNewCode({ ...newCode, recipient_name: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Delivery Address & Postcode"
-                      value={newCode.delivery_address}
-                      onChange={(e) => setNewCode({ ...newCode, delivery_address: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Recipient Email (for tracking notifications)"
-                      value={newCode.recipient_email}
-                      onChange={(e) => setNewCode({ ...newCode, recipient_email: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="submit"
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-sm"
-                  >
-                    <PlusCircle className="h-4 w-4" /> Save & Activate Consignment
-                  </button>
-                </div>
-
-                {createMsg && <p className="text-xs font-bold text-accent text-right">{createMsg}</p>}
-              </form>
-            </div>
+            <AdminBookingSteps
+              currentStaff={currentStaff}
+              onBookingCreated={(newRecord) => {
+                loadConsignments()
+                setSelectedItem(newRecord)
+              }}
+              onCancel={() => setShowManualCreator(false)}
+            />
           )}
 
           {/* ========================================================= */}
