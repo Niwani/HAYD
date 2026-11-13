@@ -57,6 +57,31 @@ const STATUS_OPTIONS = [
   { id: 'cancelled', label: 'Cancelled' },
 ]
 
+export const STATUS_DEFAULT_TEXTS = {
+  received: (item) =>
+    `Consignment logged in dispatch system. Awaiting scheduled collection from ${item?.pharmacy_name || 'dispensary'} counter.`,
+
+  verifying: (item, staff) =>
+    `Courier ${staff?.name || 'driver'} arrived at ${item?.pharmacy_name || 'dispensary'} counter. Prescription bag and patient address verified with dispensing pharmacist.`,
+
+  dispatched: (item, staff) =>
+    `Collected from ${item?.pharmacy_name || 'dispensary'} counter by ${staff?.name || 'courier'}. Validated temperature carrier active. En route to ${item?.recipient_name || 'patient'}.`,
+
+  delivered: (item, staff) =>
+    `Handed directly to recipient ${item?.recipient_name || 'patient'} at destination doorstep. Recipient identity verified and electronic POD signature captured.`,
+
+  cancelled: (item) =>
+    `Delivery run cancelled by dispensary / controller. Prescriptions returned safely to ${item?.pharmacy_name || 'dispensary'} counter with signed custody receipt.`,
+}
+
+export function getStatusTextForLevel(status, item, staff) {
+  const gen = STATUS_DEFAULT_TEXTS[status]
+  if (typeof gen === 'function') {
+    return gen(item, staff)
+  }
+  return `Status updated to ${status}.`
+}
+
 function generateTrackingCode() {
   const bytes = new Uint8Array(6)
   crypto.getRandomValues(bytes)
@@ -285,6 +310,13 @@ export default function Dispatch() {
     } finally {
       setUpdateLoading(false)
     }
+  }
+
+  // Pre-fill note aligned with selected status level
+  const handleStatusLevelChange = (newStatus, targetItem = selectedItem) => {
+    setUpdateStatus(newStatus)
+    const alignedText = getStatusTextForLevel(newStatus, targetItem, currentStaff)
+    setUpdateNote(alignedText)
   }
 
   const copyTrackingLink = (code) => {
@@ -997,11 +1029,11 @@ export default function Dispatch() {
                                   <button
                                     onClick={() => {
                                       const now = new Date()
-                                      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                                      const text = getStatusTextForLevel('dispatched', item, currentStaff)
                                       handleStatusSubmit(
                                         item,
                                         'dispatched',
-                                        `Collected from dispensary by ${currentStaff.name} at ${timeStr}. Validated thermal carrier active.`,
+                                        text,
                                         { collection_time: now.toISOString() }
                                       )
                                     }}
@@ -1015,11 +1047,11 @@ export default function Dispatch() {
                                   <button
                                     onClick={() => {
                                       const now = new Date()
-                                      const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                                      const text = getStatusTextForLevel('delivered', item, currentStaff)
                                       handleStatusSubmit(
                                         item,
                                         'delivered',
-                                        `Handed directly to patient by ${currentStaff.name} at ${timeStr}. Electronic POD signature verified.`,
+                                        text,
                                         { delivery_time: now.toISOString() }
                                       )
                                     }}
@@ -1040,8 +1072,9 @@ export default function Dispatch() {
                           <button
                             onClick={() => {
                               setSelectedItem(item)
-                              setUpdateStatus(item.status || 'dispatched')
-                              setUpdateNote(item.note || '')
+                              const currentLevel = item.status || 'dispatched'
+                              setUpdateStatus(currentLevel)
+                              setUpdateNote(getStatusTextForLevel(currentLevel, item, currentStaff))
                             }}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d9488] hover:underline"
                           >
@@ -1066,15 +1099,15 @@ export default function Dispatch() {
                             </button>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-3">
                             <div className="space-y-1">
                               <label className="text-[0.7rem] font-semibold text-foreground/80">
-                                New Consignment Status
+                                Consignment Status Level
                               </label>
                               <select
                                 value={updateStatus}
-                                onChange={(e) => setUpdateStatus(e.target.value)}
-                                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
+                                onChange={(e) => handleStatusLevelChange(e.target.value, item)}
+                                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[#0d9488]"
                               >
                                 {STATUS_OPTIONS.map((opt) => (
                                   <option key={opt.id} value={opt.id}>
@@ -1082,19 +1115,55 @@ export default function Dispatch() {
                                   </option>
                                 ))}
                               </select>
+                              <span className="text-[0.65rem] text-[#0d9488] block">
+                                ✓ Level-aligned text pre-filled
+                              </span>
                             </div>
 
-                            <div className="space-y-1">
-                              <label className="text-[0.7rem] font-semibold text-foreground/80">
-                                Operational Courier Note
-                              </label>
-                              <input
-                                type="text"
+                            <div className="space-y-1 sm:col-span-2">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[0.7rem] font-semibold text-foreground/80">
+                                  Status Note (Pre-aligned to status & fully editable)
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => setUpdateNote(getStatusTextForLevel(updateStatus, item, currentStaff))}
+                                  className="text-[0.65rem] text-[#0d9488] font-semibold hover:underline"
+                                >
+                                  Reset to level default
+                                </button>
+                              </div>
+                              <textarea
+                                rows={2}
                                 value={updateNote}
                                 onChange={(e) => setUpdateNote(e.target.value)}
-                                placeholder="e.g. Handed to named patient, signature captured"
-                                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
+                                placeholder="Status message to pharmacy and patient..."
+                                className="w-full rounded-xl border border-input bg-background p-2.5 text-xs text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-[#0d9488]"
                               />
+
+                              {/* Quick tags */}
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                <span className="text-[0.65rem] text-muted-foreground">Quick additions:</span>
+                                {[
+                                  '+ Cold-chain 2°C–8°C logged',
+                                  '+ Photo ID verified',
+                                  '+ Handed to named patient',
+                                  '+ Handed to spouse with consent',
+                                  '+ Doorbell answered promptly',
+                                ].map((chip) => (
+                                  <button
+                                    key={chip}
+                                    type="button"
+                                    onClick={() => {
+                                      const addition = chip.replace(/^\+\s*/, '')
+                                      setUpdateNote((prev) => (prev ? `${prev.trim()} ${addition}.` : `${addition}.`))
+                                    }}
+                                    className="rounded-full border border-border bg-card px-2 py-0.5 text-[0.65rem] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                                  >
+                                    {chip}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           </div>
 
