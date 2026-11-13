@@ -20,14 +20,33 @@ import {
   LogOut,
   AlertCircle,
   ExternalLink,
+  User,
+  Users,
+  Truck,
+  Zap,
+  Phone,
+  Mail,
+  Navigation,
+  Share2,
+  Calendar,
+  ThermometerSnowflake,
+  ArrowRight,
+  UserCheck,
 } from 'lucide-react'
 import { PageHero } from '@/components/SharedSections'
 import { storageClient } from '@/lib/storage'
+import {
+  STAFF_ACCOUNTS,
+  authenticateStaff,
+  getCurrentStaff,
+  setCurrentStaff,
+  clearCurrentStaff,
+  getAvailableCouriers,
+  getStaffById,
+} from '@/lib/staffAuth'
 import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
 import { cn } from '@/lib/utils'
 import haydIconNavy from '@/assets/hayd-icon-navy.png'
-
-const DISPATCH_PIN = import.meta.env.VITE_DISPATCH_PIN || 'hayd2026'
 
 const STATUS_OPTIONS = [
   { id: 'received', label: '1. Request received & scheduled' },
@@ -44,128 +63,252 @@ function generateTrackingCode() {
   return `HAYD-${Array.from(bytes, (b) => chars[b % chars.length]).join('')}`
 }
 
+function generateDispatchSlip(item, courier) {
+  const pickup = item.pickup_address || `${item.pharmacy_name || 'Dispensary'}, Birmingham`
+  const delivery = item.delivery_address || `${item.recipient_name || 'Patient'}, ${item.town || 'Birmingham'}`
+  const cat = Array.isArray(item.categories) ? item.categories.join(', ') : 'Standard Ambient'
+  const trackingUrl = getTrackingUrl(item.reference)
+
+  return `*HAYD DISPATCH ASSIGNMENT*
+Ref: ${item.reference}
+Assigned to: ${courier?.name || item.assigned_name || 'Courier'}
+
+*1. PICKUP (Dispensary Counter)*
+${item.pharmacy_name || 'Partner Pharmacy'}
+Address: ${pickup}
+Phone: ${item.pharmacy_phone || '07761 734423'}
+
+*2. DELIVERY (Patient Doorstep)*
+Recipient: ${item.recipient_name || 'Patient'}
+Address: ${delivery}
+Phone: ${item.recipient_phone || 'N/A'}
+
+*Handling:* ${cat} (${item.package_count || '1 parcel'})
+*Instructions:* ${item.note || 'Hand-to-hand delivery. Confirm signature.'}
+*Live Tracker:* ${trackingUrl}`
+}
+
 export default function Dispatch() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [pinInput, setPinInput] = useState('')
+  // Auth state
+  const [currentStaff, setCurrentStaffState] = useState(null)
+  const [loginIdentifier, setLoginIdentifier] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
   const [authError, setAuthError] = useState('')
 
-  // Dispatcher Dashboard State
-  const [recentList, setRecentList] = useState([])
-  const [searchRef, setSearchRef] = useState('')
+  // Data state
+  const [consignments, setConsignments] = useState([])
   const [selectedItem, setSelectedItem] = useState(null)
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState('')
+  const [activeTab, setActiveTab] = useState('all') // all | unassigned | courier_1 | courier_2 | delivered
+  const [searchQuery, setSearchQuery] = useState('')
 
-  // Update Status Form
+  // Assignment Modal / State
+  const [assigningRef, setAssigningRef] = useState(null)
+  const [selectedStaffId, setSelectedStaffId] = useState('courier_1')
+  const [assignSuccess, setAssignSuccess] = useState('')
+
+  // Status update state
   const [updateStatus, setUpdateStatus] = useState('dispatched')
   const [updateNote, setUpdateNote] = useState('')
-  const [updatePharmacyEmail, setUpdatePharmacyEmail] = useState('')
-  const [updateRecipientEmail, setUpdateRecipientEmail] = useState('')
+  const [updateNotifyEmails, setUpdateNotifyEmails] = useState(true)
   const [updateLoading, setUpdateLoading] = useState(false)
   const [updateSuccess, setUpdateSuccess] = useState('')
 
-  // Create Manual Code Form
+  // Copied link/slip state
+  const [copiedCode, setCopiedCode] = useState('')
+  const [copiedSlipRef, setCopiedSlipRef] = useState('')
+
+  // Manual code creator form
+  const [showManualCreator, setShowManualCreator] = useState(false)
   const [newCode, setNewCode] = useState({
     reference: generateTrackingCode(),
     pharmacy_name: '',
     pharmacy_email: '',
+    pharmacy_phone: '',
+    pickup_address: '',
     recipient_name: '',
     recipient_email: '',
+    recipient_phone: '',
+    delivery_address: '',
     town: 'Birmingham',
+    assigned_to: '',
     status: 'received',
+    package_count: '1 parcel',
+    categories: ['ambient'],
     note: 'Consignment logged in dispatch system. Awaiting scheduled collection from pharmacy counter.',
   })
   const [createMsg, setCreateMsg] = useState('')
-  const [copiedLink, setCopiedLink] = useState('')
 
-  // Check existing session
+  // 1. Initial Load & Session Check
   useEffect(() => {
-    const isLogged = sessionStorage.getItem('hayd_dispatch_auth') === 'true'
-    if (isLogged) {
-      setIsAuthenticated(true)
-      loadRecent()
+    const saved = getCurrentStaff()
+    if (saved) {
+      setCurrentStaffState(saved)
     }
   }, [])
 
-  const handleLogin = (e) => {
-    e.preventDefault()
-    if (pinInput.trim() === DISPATCH_PIN) {
-      sessionStorage.setItem('hayd_dispatch_auth', 'true')
-      setIsAuthenticated(true)
-      setAuthError('')
-      loadRecent()
-    } else {
-      setAuthError('Incorrect passcode. Please check with operations manager.')
+  // 2. Reload consignments when current staff changes
+  useEffect(() => {
+    if (currentStaff) {
+      loadConsignments(currentStaff)
     }
-  }
+  }, [currentStaff])
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('hayd_dispatch_auth')
-    setIsAuthenticated(false)
-    setSelectedItem(null)
-    setPinInput('')
-  }
-
-  const loadRecent = async () => {
+  const loadConsignments = async (user = currentStaff) => {
+    if (!user) return
     try {
-      const list = await storageClient.entities.TrackStatus.list()
-      setRecentList(list)
-    } catch {
-      // ignore
+      const items = await storageClient.entities.TrackStatus.listForUser(user)
+      setConsignments(items)
+      // Keep selected item fresh if still in list
+      if (selectedItem) {
+        const found = items.find((i) => i.reference === selectedItem.reference)
+        if (found) setSelectedItem(found)
+      }
+    } catch (err) {
+      console.error('Failed to load consignments:', err)
     }
   }
 
-  const handleSearch = async (target = null) => {
-    const term = (typeof target === 'string' ? target : searchRef).trim().toUpperCase()
-    if (!term) return
+  // Handle Login
+  const handleLoginSubmit = (e) => {
+    if (e) e.preventDefault()
+    setAuthError('')
 
-    setSearchLoading(true)
-    setSearchError('')
+    const res = authenticateStaff(loginIdentifier, loginPassword)
+    if (res.success) {
+      setCurrentStaffState(res.user)
+      setLoginIdentifier('')
+      setLoginPassword('')
+    } else {
+      setAuthError(res.error || 'Authentication failed.')
+    }
+  }
+
+  // Quick Demo Sign-In helper
+  const handleQuickLogin = (acc) => {
+    const res = authenticateStaff(acc.username, acc.password)
+    if (res.success) {
+      setCurrentStaffState(res.user)
+      setAuthError('')
+    }
+  }
+
+  // Handle Logout
+  const handleLogout = () => {
+    clearCurrentStaff()
+    setCurrentStaffState(null)
+    setSelectedItem(null)
+    setAssigningRef(null)
+  }
+
+  // Handle Assignment (Admin only)
+  const handleAssignCourier = async (ref, staffId) => {
+    try {
+      const staffMember = getStaffById(staffId)
+      const staffName = staffMember ? `${staffMember.name} (${staffMember.badge})` : null
+      const note = staffMember
+        ? `Assigned to ${staffMember.name} (${staffMember.unit || 'Courier Desk'}) for collection & delivery.`
+        : 'Unassigned. Returned to dispatch pool.'
+
+      const updated = await storageClient.entities.TrackStatus.assign(ref, {
+        staffId: staffId || null,
+        staffName,
+        note,
+      })
+
+      if (updated) {
+        setAssignSuccess(`Assigned ${ref} to ${staffName || 'Pool'}!`)
+        setTimeout(() => setAssignSuccess(''), 4000)
+        setAssigningRef(null)
+        await loadConsignments()
+        if (selectedItem?.reference === ref) {
+          setSelectedItem(updated)
+        }
+      }
+    } catch (err) {
+      console.error('Assignment error:', err)
+    }
+  }
+
+  // Handle Status Update (Courier or Admin)
+  const handleStatusSubmit = async (itemToUpdate = selectedItem, customStatus = null, customNote = null) => {
+    const target = itemToUpdate || selectedItem
+    if (!target?.reference) return
+
+    setUpdateLoading(true)
     setUpdateSuccess('')
 
+    const finalStatus = customStatus || updateStatus
+    const finalNote =
+      customNote ||
+      updateNote ||
+      `Status updated to ${finalStatus} by ${currentStaff.name}.`
+
     try {
-      const records = await storageClient.entities.TrackStatus.filter({ reference: term })
-      const list = Array.isArray(records) ? records : records?.items || []
-      if (list.length) {
-        const item = list[0]
-        setSelectedItem(item)
-        setUpdateStatus(item.status || 'dispatched')
-        setUpdateNote(item.note || '')
-        setUpdatePharmacyEmail(item.pharmacy_email || item.email || '')
-        setUpdateRecipientEmail(item.recipient_email || '')
-      } else {
-        setSearchError(`No consignment found with reference "${term}".`)
+      const patch = {
+        status: finalStatus,
+        note: finalNote,
+        updated_date: new Date().toISOString(),
       }
-    } catch {
-      setSearchError('Error looking up consignment.')
+
+      const updated = await storageClient.entities.TrackStatus.update(target.reference, patch)
+      setSelectedItem(updated)
+      await loadConsignments()
+
+      // Send email alert to pharmacy & recipient if enabled
+      if (updateNotifyEmails && (updated.pharmacy_email || updated.recipient_email)) {
+        try {
+          await sendStatusUpdateEmail(updated)
+          setUpdateSuccess('Status updated & notification emails sent to pharmacy and recipient!')
+        } catch {
+          setUpdateSuccess('Status updated in system (email service throttle).')
+        }
+      } else {
+        setUpdateSuccess(`Status updated to ${finalStatus}!`)
+      }
+
+      setTimeout(() => setUpdateSuccess(''), 4500)
+    } catch (err) {
+      console.error('Update error:', err)
+      setUpdateSuccess('Error updating status.')
     } finally {
-      setSearchLoading(false)
+      setUpdateLoading(false)
     }
   }
 
-  const handleCreateCode = async (e) => {
+  // Handle Manual Code Creation
+  const handleCreateManualCode = async (e) => {
     e.preventDefault()
     try {
+      const assignedCourier = newCode.assigned_to ? getStaffById(newCode.assigned_to) : null
       const created = await storageClient.entities.TrackStatus.create({
         ...newCode,
+        assigned_to: newCode.assigned_to || null,
+        assigned_name: assignedCourier ? `${assignedCourier.name} (${assignedCourier.badge})` : null,
+        assigned_at: newCode.assigned_to ? new Date().toISOString() : null,
         updated_date: new Date().toISOString(),
       })
+
       setCreateMsg(`Consignment ${created.reference} generated & activated!`)
-      loadRecent()
+      setShowManualCreator(false)
+      await loadConsignments()
       setSelectedItem(created)
-      setUpdateStatus(created.status)
-      setUpdateNote(created.note)
-      setUpdatePharmacyEmail(created.pharmacy_email || '')
-      setUpdateRecipientEmail(created.recipient_email || '')
-      // Reset form with a fresh reference
+
+      // Reset form
       setNewCode({
         reference: generateTrackingCode(),
         pharmacy_name: '',
         pharmacy_email: '',
+        pharmacy_phone: '',
+        pickup_address: '',
         recipient_name: '',
         recipient_email: '',
+        recipient_phone: '',
+        delivery_address: '',
         town: 'Birmingham',
+        assigned_to: '',
         status: 'received',
+        package_count: '1 parcel',
+        categories: ['ambient'],
         note: 'Consignment logged in dispatch system. Awaiting scheduled collection from pharmacy counter.',
       })
       setTimeout(() => setCreateMsg(''), 5000)
@@ -174,93 +317,137 @@ export default function Dispatch() {
     }
   }
 
-  const handleStatusUpdate = async () => {
-    if (!selectedItem?.reference) return
-    setUpdateLoading(true)
-    setUpdateSuccess('')
-
-    try {
-      const patch = {
-        status: updateStatus,
-        note: updateNote,
-        pharmacy_email: updatePharmacyEmail,
-        recipient_email: updateRecipientEmail,
-      }
-      const updated = await storageClient.entities.TrackStatus.update(selectedItem.reference, patch)
-      setSelectedItem(updated)
-      loadRecent()
-
-      // Automatically dispatch notification emails to pharmacy and recipient
-      await sendStatusUpdateEmail(updated)
-      setUpdateSuccess('Status updated & notification emails dispatched!')
-      setTimeout(() => setUpdateSuccess(''), 5000)
-    } catch (err) {
-      console.error(err)
-      setUpdateSuccess('Status updated locally (email alert failed).')
-    } finally {
-      setUpdateLoading(false)
-    }
-  }
-
-  const copyLink = (code) => {
+  const copyTrackingLink = (code) => {
     const url = getTrackingUrl(code)
     navigator.clipboard.writeText(url)
-    setCopiedLink(code)
-    setTimeout(() => setCopiedLink(''), 2500)
+    setCopiedCode(code)
+    setTimeout(() => setCopiedCode(''), 2500)
+  }
+
+  const copyDispatchSlip = (item) => {
+    const courier = getStaffById(item.assigned_to)
+    const slip = generateDispatchSlip(item, courier)
+    navigator.clipboard.writeText(slip)
+    setCopiedSlipRef(item.reference)
+    setTimeout(() => setCopiedSlipRef(''), 2500)
+  }
+
+  const openWhatsAppSlip = (item) => {
+    const courier = getStaffById(item.assigned_to)
+    const slip = generateDispatchSlip(item, courier)
+    const phone = courier?.phone?.replace(/[^0-9]/g, '') || ''
+    const waUrl = phone
+      ? `https://wa.me/44${phone.replace(/^0/, '')}?text=${encodeURIComponent(slip)}`
+      : `https://wa.me/?text=${encodeURIComponent(slip)}`
+    window.open(waUrl, '_blank')
   }
 
   // -------------------------------------------------------------
-  // VIEW: Login Screen if not authenticated
+  // VIEW: LOGIN SCREEN (if not signed in)
   // -------------------------------------------------------------
-  if (!isAuthenticated) {
+  if (!currentStaff) {
     return (
-      <div className="flex min-h-[75vh] items-center justify-center px-4 py-16">
-        <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-xl text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary p-3">
+      <div className="flex min-h-[80vh] items-center justify-center px-4 py-16">
+        <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-8 md:p-10 shadow-2xl text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#08162E] p-3 shadow-md">
             <img src={haydIconNavy} alt="HAYD" className="h-full w-full invert object-contain" />
           </div>
 
-          <span className="mt-5 inline-block text-[0.7rem] font-bold uppercase tracking-widest text-accent">
-            Restricted Staff Area
+          <span className="mt-5 inline-block rounded-full bg-accent/15 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-widest text-accent">
+            Restricted Operational Area
           </span>
-          <h1 className="mt-1 font-heading text-2xl font-bold tracking-tight text-foreground">
-            Staff Dispatch Portal
+          <h1 className="mt-2 font-heading text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+            HAYD Staff Dispatch Portal
           </h1>
-          <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-            Enter your operational passcode to manage active collection rounds, generate tracking codes, and update parcel delivery statuses.
+          <p className="mt-2 text-xs md:text-sm text-muted-foreground leading-relaxed">
+            Multi-user dispatch console. Admin supervises all bookings and assigns couriers; staff couriers securely view and action their assigned runs.
           </p>
 
-          <form onSubmit={handleLogin} className="mt-8 space-y-4 text-left">
+          {/* Quick Demo One-Click Sign-In Buttons */}
+          <div className="mt-6 rounded-2xl border border-border/80 bg-secondary/40 p-4 text-left">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[0.7rem] font-bold uppercase tracking-wider text-muted-foreground">
+                One-Click Quick Sign-In (For Testing)
+              </span>
+              <span className="text-[0.65rem] text-accent font-semibold">Demo credentials ready</span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {STAFF_ACCOUNTS.map((acc) => (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => handleQuickLogin(acc)}
+                  className="flex flex-col items-start rounded-xl border border-border bg-card p-2.5 text-left transition-all hover:border-[#0d9488] hover:shadow-sm"
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                    {acc.role === 'admin' ? (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600/15 text-blue-600 text-[0.7rem]">
+                        👑
+                      </span>
+                    ) : (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-600 text-[0.7rem]">
+                        🚚
+                      </span>
+                    )}
+                    <span className="truncate">{acc.name.split(' ')[0]}</span>
+                  </div>
+                  <span className="mt-1 text-[0.68rem] text-muted-foreground truncate w-full">
+                    {acc.badge}
+                  </span>
+                  <span className="mt-0.5 text-[0.62rem] font-mono text-accent">
+                    {acc.role === 'admin' ? 'Supervises all' : 'Assigned only'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Standard Form Login */}
+          <form onSubmit={handleLoginSubmit} className="mt-6 space-y-4 text-left">
             <div className="space-y-1.5">
-              <label htmlFor="pin" className="text-xs font-semibold text-foreground/80">
-                Staff Passcode
+              <label className="text-xs font-semibold text-foreground/80">
+                Staff Username or Email
               </label>
-              <div className="relative">
-                <input
-                  id="pin"
-                  type="password"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="Enter passcode"
-                  autoFocus
-                  className="h-12 w-full rounded-xl border border-input bg-background px-4 font-mono text-base tracking-wider text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#0d9488]"
-                />
-              </div>
+              <input
+                type="text"
+                value={loginIdentifier}
+                onChange={(e) => setLoginIdentifier(e.target.value)}
+                placeholder="e.g. admin@thehayd.uk, courier1, or marcus"
+                className="h-11 w-full rounded-xl border border-input bg-background px-4 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#0d9488]"
+              />
             </div>
 
-            {authError && <p className="text-xs font-semibold text-destructive">{authError}</p>}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground/80">
+                Staff Password / Passcode
+              </label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter password or passcode"
+                className="h-11 w-full rounded-xl border border-input bg-background px-4 font-mono text-sm tracking-wider text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#0d9488]"
+              />
+            </div>
+
+            {authError && (
+              <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs font-semibold text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
 
             <button
               type="submit"
-              className="w-full inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+              className="w-full inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-md"
             >
               <KeyRound className="h-4 w-4" />
-              Sign In to Dispatch
+              Sign In with Staff Account
             </button>
           </form>
 
           <p className="mt-6 text-[0.7rem] text-muted-foreground">
-            Authorised HAYD dispatch personnel only.
+            Authorised HAYD dispatch personnel only. For staff passcode resets, contact operations dispatch on 07761 734423.
           </p>
         </div>
       </div>
@@ -268,39 +455,92 @@ export default function Dispatch() {
   }
 
   // -------------------------------------------------------------
-  // VIEW: Authenticated Dispatcher Dashboard
+  // Filter logic based on tab and role
+  // -------------------------------------------------------------
+  const couriers = getAvailableCouriers()
+
+  const filteredConsignments = consignments.filter((item) => {
+    // Role filter: If staff, they strictly only see their own assigned parcels
+    if (currentStaff.role === 'staff' && item.assigned_to !== currentStaff.id) {
+      return false
+    }
+
+    // Tab filter (Admin only)
+    if (currentStaff.role === 'admin') {
+      if (activeTab === 'unassigned' && item.assigned_to) return false
+      if (activeTab === 'courier_1' && item.assigned_to !== 'courier_1') return false
+      if (activeTab === 'courier_2' && item.assigned_to !== 'courier_2') return false
+      if (activeTab === 'delivered' && item.status !== 'delivered') return false
+    }
+
+    // Search query filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      const matchRef = item.reference?.toLowerCase().includes(q)
+      const matchPharm = item.pharmacy_name?.toLowerCase().includes(q)
+      const matchRecip = item.recipient_name?.toLowerCase().includes(q)
+      const matchTown = item.town?.toLowerCase().includes(q)
+      return matchRef || matchPharm || matchRecip || matchTown
+    }
+
+    return true
+  })
+
+  // Admin stats
+  const totalCount = consignments.length
+  const unassignedCount = consignments.filter((i) => !i.assigned_to && i.status !== 'delivered' && i.status !== 'cancelled').length
+  const courier1Count = consignments.filter((i) => i.assigned_to === 'courier_1' && i.status !== 'delivered').length
+  const courier2Count = consignments.filter((i) => i.assigned_to === 'courier_2' && i.status !== 'delivered').length
+  const deliveredCount = consignments.filter((i) => i.status === 'delivered').length
+
+  // Staff specific stats
+  const staffActiveCount = consignments.filter((i) => i.assigned_to === currentStaff.id && i.status !== 'delivered').length
+  const staffDeliveredCount = consignments.filter((i) => i.assigned_to === currentStaff.id && i.status === 'delivered').length
+
+  // -------------------------------------------------------------
+  // VIEW: AUTHENTICATED STAFF DASHBOARD
   // -------------------------------------------------------------
   return (
     <>
-      {/* Top Banner */}
-      <div className="border-b border-border bg-[#08162E] text-white">
-        <div className="container-page flex flex-wrap items-center justify-between gap-4 py-4">
+      {/* Top Operations Header Bar */}
+      <div className="border-b border-border bg-[#08162E] text-white sticky top-0 z-30 shadow-md">
+        <div className="container-page flex flex-wrap items-center justify-between gap-4 py-3.5">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 p-1.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 p-1.5">
               <img src={haydIconNavy} alt="HAYD" className="h-full w-full invert object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-heading text-base font-bold tracking-tight text-white">
-                  HAYD Operations & Dispatch Portal
+                <h1 className="font-heading text-sm md:text-base font-bold tracking-tight text-white">
+                  HAYD Operations & Dispatch
                 </h1>
-                <span className="inline-flex items-center rounded-full bg-[#0d9488]/20 px-2 py-0.5 text-[0.65rem] font-bold text-[#0d9488]">
-                  Live
+                <span
+                  className={cn(
+                    'inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase',
+                    currentStaff.role === 'admin'
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-400/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                  )}
+                >
+                  {currentStaff.role === 'admin' ? '👑 Controller' : '🚚 Field Staff'}
                 </span>
               </div>
-              <p className="text-[0.7rem] text-white/60">Dispensary rounds, manifests & tracking dispatch</p>
+              <p className="text-[0.7rem] text-white/70">
+                Logged in as <strong className="text-white">{currentStaff.name}</strong> ({currentStaff.badge})
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <Link
               to="/track"
               target="_blank"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80 hover:bg-white/10 hover:text-white transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              Public Tracking Page
+              Public Tracking
             </Link>
+
             <button
               onClick={handleLogout}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-destructive hover:text-white transition-colors"
@@ -312,308 +552,215 @@ export default function Dispatch() {
         </div>
       </div>
 
-      <section className="bg-background py-10 md:py-14">
-        <div className="container-page space-y-10">
-          {/* Top Quick Stats */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                Total Consignments
-              </span>
-              <div className="mt-2 text-2xl font-extrabold text-foreground">{recentList.length}</div>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                In Transit / Dispatched
-              </span>
-              <div className="mt-2 text-2xl font-extrabold text-[#0d9488]">
-                {recentList.filter((i) => i.status === 'dispatched').length}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                Awaiting Collection
-              </span>
-              <div className="mt-2 text-2xl font-extrabold text-foreground">
-                {recentList.filter((i) => i.status === 'received' || i.status === 'verifying').length}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <span className="text-[0.7rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                Delivered Today
-              </span>
-              <div className="mt-2 text-2xl font-extrabold text-foreground">
-                {recentList.filter((i) => i.status === 'delivered').length}
-              </div>
-            </div>
-          </div>
+      <section className="bg-background py-8 md:py-12">
+        <div className="container-page space-y-8">
+          {/* ========================================================= */}
+          {/* ROLE BANNER & METRICS */}
+          {/* ========================================================= */}
+          {currentStaff.role === 'admin' ? (
+            /* ADMIN CONTROLLER METRICS */
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-heading text-xl md:text-2xl font-bold tracking-tight text-foreground">
+                    Dispatch Operations Deck
+                  </h2>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    Supervise customer bookings, assign available couriers, and monitor live deliveries.
+                  </p>
+                </div>
 
-          <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:gap-12">
-            {/* Left Column: Search & Manage Live Parcel */}
-            <div className="space-y-8">
-              {/* Lookup Card */}
-              <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                <h2 className="font-heading text-base font-bold text-foreground">
-                  Search & Update Existing Consignment
-                </h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Enter any reference to modify status and send automatic email updates.
-                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowManualCreator(!showManualCreator)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                    {showManualCreator ? 'Hide Booking Form' : 'New Manual Booking'}
+                  </button>
+                  <button
+                    onClick={() => loadConsignments()}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
 
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSearch()
-                  }}
-                  className="mt-4 flex gap-3"
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <div
+                  onClick={() => setActiveTab('all')}
+                  className={cn(
+                    'cursor-pointer rounded-2xl border p-4 transition-all',
+                    activeTab === 'all'
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-border bg-card hover:border-foreground/20'
+                  )}
                 >
-                  <input
-                    type="text"
-                    value={searchRef}
-                    onChange={(e) => setSearchRef(e.target.value.toUpperCase())}
-                    placeholder="e.g. HAYD-8F2K9Q"
-                    className="h-11 flex-1 rounded-xl border border-input bg-background px-4 font-mono text-sm font-bold tracking-wider text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-[#0d9488]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={searchLoading}
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-                  >
-                    {searchLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    Search
-                  </button>
-                </form>
-                {searchError && <p className="mt-2.5 text-xs font-semibold text-destructive">{searchError}</p>}
-              </div>
-
-              {/* Selected Consignment Details & Live Status Editor */}
-              {selectedItem && (
-                <div className="rounded-2xl border-2 border-accent/40 bg-card p-6 md:p-8 space-y-6 shadow-sm animate-in fade-in">
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-xl font-extrabold tracking-wider text-foreground">
-                          {selectedItem.reference}
-                        </span>
-                        <button
-                          onClick={() => copyLink(selectedItem.reference)}
-                          className="inline-flex items-center gap-1 rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-foreground/80 hover:bg-secondary/80"
-                        >
-                          <Copy className="h-3 w-3" />
-                          {copiedLink === selectedItem.reference ? 'Copied link!' : 'Copy tracking link'}
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-foreground/80">
-                        {selectedItem.pharmacy_name && (
-                          <span>
-                            Pharmacy: <strong>{selectedItem.pharmacy_name}</strong>
-                          </span>
-                        )}
-                        {selectedItem.recipient_name && (
-                          <span>
-                            Recipient: <strong>{selectedItem.recipient_name}</strong>
-                          </span>
-                        )}
-                        {selectedItem.town && (
-                          <span>
-                            Town: <strong>{selectedItem.town}</strong>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-bold text-accent uppercase">
-                        Current: {selectedItem.status}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Status Update Form */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-accent flex items-center gap-1.5">
-                        <Send className="h-3.5 w-3.5" /> Update Live Status & Trigger Email Notifications
-                      </h3>
-                      {updateSuccess && (
-                        <span className="text-xs font-bold text-accent animate-in fade-in">
-                          {updateSuccess}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">New Status</label>
-                        <select
-                          value={updateStatus}
-                          onChange={(e) => setUpdateStatus(e.target.value)}
-                          className="h-11 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium"
-                        >
-                          {STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.id} value={opt.id}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">Operational Note</label>
-                        <input
-                          type="text"
-                          value={updateNote}
-                          onChange={(e) => setUpdateNote(e.target.value)}
-                          placeholder="e.g. Courier collected, ETA 20 mins"
-                          className="h-11 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2 pt-1">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">
-                          Pharmacy Email (Receives Status Update)
-                        </label>
-                        <input
-                          type="email"
-                          value={updatePharmacyEmail}
-                          onChange={(e) => setUpdatePharmacyEmail(e.target.value)}
-                          placeholder="dispensary@pharmacy.co.uk"
-                          className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-foreground/80">
-                          Recipient Email (Receives Status Update)
-                        </label>
-                        <input
-                          type="email"
-                          value={updateRecipientEmail}
-                          onChange={(e) => setUpdateRecipientEmail(e.target.value)}
-                          placeholder="patient@example.com"
-                          className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        onClick={handleStatusUpdate}
-                        disabled={updateLoading}
-                        className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-6 text-xs font-bold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 shadow-sm"
-                      >
-                        {updateLoading ? (
-                          <>
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                            Dispatching emails & updating…
-                          </>
-                        ) : (
-                          'Save Status & Send Email Notifications'
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Recent Active Deliveries Table */}
-              <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-heading text-sm font-bold text-foreground">
-                    Recent Consignments ({recentList.length})
-                  </h3>
-                  <button
-                    onClick={loadRecent}
-                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <RefreshCw className="h-3 w-3" /> Refresh
-                  </button>
+                  <span className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">
+                    Total Bookings
+                  </span>
+                  <p className="mt-1 font-heading text-2xl font-bold text-foreground">{totalCount}</p>
                 </div>
 
-                <div className="divide-y divide-border/60">
-                  {recentList.map((item) => (
-                    <div
-                      key={item.reference}
-                      className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-bold text-foreground">{item.reference}</span>
-                        <span
-                          className={cn(
-                            'rounded-full px-2.5 py-0.5 text-[0.68rem] font-bold uppercase',
-                            item.status === 'delivered'
-                              ? 'bg-accent/20 text-accent'
-                              : item.status === 'dispatched'
-                              ? 'bg-primary/10 text-primary'
-                              : 'bg-secondary text-muted-foreground'
-                          )}
-                        >
-                          {item.status}
-                        </span>
-                        <span className="text-muted-foreground text-[0.75rem]">
-                          {item.pharmacy_name || item.town || 'Active'}
-                        </span>
-                      </div>
+                <div
+                  onClick={() => setActiveTab('unassigned')}
+                  className={cn(
+                    'cursor-pointer rounded-2xl border p-4 transition-all relative overflow-hidden',
+                    activeTab === 'unassigned'
+                      ? 'border-amber-500 bg-amber-500/10 shadow-sm'
+                      : unassignedCount > 0
+                      ? 'border-amber-400/60 bg-amber-500/5 hover:border-amber-500'
+                      : 'border-border bg-card hover:border-foreground/20'
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[0.68rem] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      ⚠️ Needs Assignment
+                    </span>
+                    {unassignedCount > 0 && (
+                      <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                    )}
+                  </div>
+                  <p className="mt-1 font-heading text-2xl font-bold text-amber-600 dark:text-amber-400">
+                    {unassignedCount}
+                  </p>
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setSearchRef(item.reference)
-                            handleSearch(item.reference)
-                          }}
-                          className="rounded-lg bg-secondary px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-secondary/70"
-                        >
-                          Update Status
-                        </button>
-                        <button
-                          onClick={() => copyLink(item.reference)}
-                          className="rounded-lg border border-border p-1 text-muted-foreground hover:text-foreground"
-                          title="Copy tracking link"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div
+                  onClick={() => setActiveTab('courier_1')}
+                  className={cn(
+                    'cursor-pointer rounded-2xl border p-4 transition-all',
+                    activeTab === 'courier_1'
+                      ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
+                      : 'border-border bg-card hover:border-foreground/20'
+                  )}
+                >
+                  <span className="text-[0.68rem] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Marcus Vance (Unit 1)
+                  </span>
+                  <p className="mt-1 font-heading text-2xl font-bold text-foreground">
+                    {courier1Count} active
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => setActiveTab('courier_2')}
+                  className={cn(
+                    'cursor-pointer rounded-2xl border p-4 transition-all',
+                    activeTab === 'courier_2'
+                      ? 'border-teal-500 bg-teal-500/10 shadow-sm'
+                      : 'border-border bg-card hover:border-foreground/20'
+                  )}
+                >
+                  <span className="text-[0.68rem] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                    Amara Okafor (Unit 2)
+                  </span>
+                  <p className="mt-1 font-heading text-2xl font-bold text-foreground">
+                    {courier2Count} active
+                  </p>
+                </div>
+
+                <div
+                  onClick={() => setActiveTab('delivered')}
+                  className={cn(
+                    'cursor-pointer rounded-2xl border p-4 transition-all',
+                    activeTab === 'delivered'
+                      ? 'border-[#0d9488] bg-[#0d9488]/10 shadow-sm'
+                      : 'border-border bg-card hover:border-foreground/20'
+                  )}
+                >
+                  <span className="text-[0.68rem] font-bold uppercase tracking-wider text-[#0d9488]">
+                    Delivered Today
+                  </span>
+                  <p className="mt-1 font-heading text-2xl font-bold text-foreground">{deliveredCount}</p>
                 </div>
               </div>
             </div>
+          ) : (
+            /* STAFF COURIER FOCUSED BANNER */
+            <div className="rounded-3xl border border-border bg-card p-6 md:p-8 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-emerald-600/15 text-emerald-600 font-bold">
+                      🚚
+                    </span>
+                    <h2 className="font-heading text-xl md:text-2xl font-bold text-foreground">
+                      Welcome back, {currentStaff.name}
+                    </h2>
+                  </div>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    <strong>{currentStaff.unit}</strong> — Assigned active delivery run sheet for today.
+                  </p>
+                  <p className="text-[0.72rem] text-accent font-medium">
+                    🔒 Strict staff isolation: You only see dispatches assigned directly to your unit.
+                  </p>
+                </div>
 
-            {/* Right Column: Generate New Code (Manual / Phone Booking) */}
-            <div className="space-y-6">
-              <div className="rounded-2xl border-2 border-primary/20 bg-card p-6 md:p-8 shadow-sm space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-2xl border border-border bg-secondary/50 px-5 py-3 text-center">
+                    <span className="text-[0.68rem] uppercase font-bold text-muted-foreground">
+                      Your Active Drops
+                    </span>
+                    <p className="font-heading text-2xl font-bold text-[#0d9488]">{staffActiveCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-secondary/50 px-5 py-3 text-center">
+                    <span className="text-[0.68rem] uppercase font-bold text-muted-foreground">
+                      Completed Today
+                    </span>
+                    <p className="font-heading text-2xl font-bold text-foreground">{staffDeliveredCount}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* MANUAL BOOKING FORM (Expandable for Admin) */}
+          {/* ========================================================= */}
+          {currentStaff.role === 'admin' && showManualCreator && (
+            <div className="rounded-3xl border-2 border-primary/20 bg-card p-6 md:p-8 shadow-lg space-y-6">
+              <div className="flex items-center justify-between border-b border-border pb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold">
                     <PlusCircle className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="font-heading text-base font-bold text-foreground">
-                      New Manual Booking
-                    </h2>
+                    <h3 className="font-heading text-base font-bold text-foreground">
+                      New Manual Booking / Phone Collection
+                    </h3>
                     <p className="text-xs text-muted-foreground">
-                      For orders phoned into dispatch or received via email.
+                      Generate an off-book delivery code and assign it directly to a staff courier.
                     </p>
                   </div>
                 </div>
+                <button
+                  onClick={() => setShowManualCreator(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Close
+                </button>
+              </div>
 
-                <form onSubmit={handleCreateCode} className="space-y-4">
+              <form onSubmit={handleCreateManualCode} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Tracking Reference Code</label>
+                    <label className="text-xs font-semibold text-foreground/80">Tracking Code</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={newCode.reference}
                         onChange={(e) => setNewCode({ ...newCode, reference: e.target.value.toUpperCase() })}
-                        className="h-10 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm font-bold"
+                        className="h-10 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-xs font-bold"
                       />
                       <button
                         type="button"
                         onClick={() => setNewCode({ ...newCode, reference: generateTrackingCode() })}
                         className="rounded-xl border border-border px-3 text-xs hover:bg-secondary"
-                        title="Generate another code"
+                        title="Generate code"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                       </button>
@@ -621,47 +768,19 @@ export default function Dispatch() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Pharmacy / Dispensary Name</label>
-                    <input
-                      type="text"
-                      value={newCode.pharmacy_name}
-                      onChange={(e) => setNewCode({ ...newCode, pharmacy_name: e.target.value })}
-                      placeholder="e.g. Well Pharmacy, Church St"
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Pharmacy Email (for alerts)</label>
-                    <input
-                      type="email"
-                      value={newCode.pharmacy_email}
-                      onChange={(e) => setNewCode({ ...newCode, pharmacy_email: e.target.value })}
-                      placeholder="dispensary@pharmacy.co.uk"
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Recipient / Patient Name</label>
-                    <input
-                      type="text"
-                      value={newCode.recipient_name}
-                      onChange={(e) => setNewCode({ ...newCode, recipient_name: e.target.value })}
-                      placeholder="e.g. Robert Hughes"
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Recipient Email (for tracking)</label>
-                    <input
-                      type="email"
-                      value={newCode.recipient_email}
-                      onChange={(e) => setNewCode({ ...newCode, recipient_email: e.target.value })}
-                      placeholder="patient@example.com"
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
-                    />
+                    <label className="text-xs font-semibold text-foreground/80">Assign to Courier</label>
+                    <select
+                      value={newCode.assigned_to}
+                      onChange={(e) => setNewCode({ ...newCode, assigned_to: e.target.value })}
+                      className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs"
+                    >
+                      <option value="">Leave Unassigned (Pool)</option>
+                      {couriers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.badge})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">
@@ -670,53 +789,480 @@ export default function Dispatch() {
                       type="text"
                       value={newCode.town}
                       onChange={(e) => setNewCode({ ...newCode, town: e.target.value })}
-                      placeholder="e.g. Birmingham"
                       className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
                     />
                   </div>
+                </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Initial Status</label>
-                    <select
-                      value={newCode.status}
-                      onChange={(e) => setNewCode({ ...newCode, status: e.target.value })}
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium"
-                    >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground/80">Operational Note</label>
+                <div className="grid gap-4 sm:grid-cols-2 pt-1">
+                  <div className="rounded-2xl border border-border bg-secondary/30 p-4 space-y-3">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 text-[#0d9488]" /> Dispensary Pickup Details
+                    </span>
                     <input
                       type="text"
-                      value={newCode.note}
-                      onChange={(e) => setNewCode({ ...newCode, note: e.target.value })}
-                      placeholder="e.g. Courier en route to pharmacy counter"
-                      className="h-10 w-full rounded-xl border border-input bg-background px-3.5 text-xs"
+                      placeholder="Dispensary Name (e.g. Well Pharmacy)"
+                      value={newCode.pharmacy_name}
+                      onChange={(e) => setNewCode({ ...newCode, pharmacy_name: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Pickup Address & Postcode"
+                      value={newCode.pickup_address}
+                      onChange={(e) => setNewCode({ ...newCode, pickup_address: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Dispensary Email (for dispatch updates)"
+                      value={newCode.pharmacy_email}
+                      onChange={(e) => setNewCode({ ...newCode, pharmacy_email: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
                     />
                   </div>
 
+                  <div className="rounded-2xl border border-border bg-secondary/30 p-4 space-y-3">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-[#0d9488]" /> Recipient Delivery Details
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Recipient Full Name"
+                      value={newCode.recipient_name}
+                      onChange={(e) => setNewCode({ ...newCode, recipient_name: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Delivery Address & Postcode"
+                      value={newCode.delivery_address}
+                      onChange={(e) => setNewCode({ ...newCode, delivery_address: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Recipient Email (for tracking notifications)"
+                      value={newCode.recipient_email}
+                      onChange={(e) => setNewCode({ ...newCode, recipient_email: e.target.value })}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="submit"
-                    className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-sm"
+                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-xs font-bold text-primary-foreground hover:bg-primary/90 shadow-sm"
                   >
-                    <PlusCircle className="h-4 w-4" />
-                    Save & Activate Consignment
+                    <PlusCircle className="h-4 w-4" /> Save & Activate Consignment
                   </button>
+                </div>
 
-                  {createMsg && <p className="text-xs font-bold text-accent text-center">{createMsg}</p>}
-                </form>
-              </div>
+                {createMsg && <p className="text-xs font-bold text-accent text-right">{createMsg}</p>}
+              </form>
             </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* SEARCH & FILTER BAR */}
+          {/* ========================================================= */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative flex-1 min-w-[260px] max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search reference (HAYD-...), pharmacy, recipient, or town..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-10 w-full rounded-xl border border-input bg-card pl-10 pr-4 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#0d9488]"
+              />
+            </div>
+
+            {assignSuccess && (
+              <span className="text-xs font-bold text-accent animate-in fade-in flex items-center gap-1">
+                <CheckCircle2 className="h-4 w-4" /> {assignSuccess}
+              </span>
+            )}
+          </div>
+
+          {/* ========================================================= */}
+          {/* CONSIGNMENTS LIST / RUN SHEET */}
+          {/* ========================================================= */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading text-base font-bold text-foreground">
+                {currentStaff.role === 'admin'
+                  ? `Active Manifests & Consignments (${filteredConsignments.length})`
+                  : `Your Assigned Deliveries (${filteredConsignments.length})`}
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {currentStaff.role === 'admin'
+                  ? 'Showing live dispatches across all staff & pool'
+                  : `Filtered exclusively for ${currentStaff.name}`}
+              </span>
+            </div>
+
+            {filteredConsignments.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+                  <Package className="h-6 w-6" />
+                </div>
+                <h4 className="font-heading text-base font-bold text-foreground">
+                  No consignments found
+                </h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  {currentStaff.role === 'staff'
+                    ? 'No collections are currently assigned to your unit. The Operations Controller will assign jobs to your runsheet as they arrive.'
+                    : 'No bookings match your current filter or search criteria.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-1">
+                {filteredConsignments.map((item) => {
+                  const isAssignedToMarcus = item.assigned_to === 'courier_1'
+                  const isAssignedToAmara = item.assigned_to === 'courier_2'
+                  const isUnassigned = !item.assigned_to
+                  const isDelivered = item.status === 'delivered'
+                  const assignedStaff = getStaffById(item.assigned_to)
+
+                  return (
+                    <div
+                      key={item.reference}
+                      className={cn(
+                        'rounded-2xl border bg-card p-5 md:p-6 shadow-sm transition-all space-y-4',
+                        isUnassigned
+                          ? 'border-amber-400/50 bg-amber-500/[0.02]'
+                          : isDelivered
+                          ? 'border-border/60 opacity-80'
+                          : 'border-border hover:border-foreground/20'
+                      )}
+                    >
+                      {/* Top Header Row */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3.5">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <span className="font-mono text-sm font-bold text-foreground bg-secondary px-2.5 py-1 rounded-lg">
+                            {item.reference}
+                          </span>
+
+                          <span
+                            className={cn(
+                              'rounded-full px-3 py-1 text-[0.68rem] font-bold uppercase tracking-wider',
+                              item.status === 'delivered'
+                                ? 'bg-emerald-600/15 text-emerald-600'
+                                : item.status === 'dispatched'
+                                ? 'bg-primary/10 text-primary'
+                                : item.status === 'verifying'
+                                ? 'bg-blue-600/15 text-blue-600'
+                                : 'bg-amber-500/15 text-amber-600'
+                            )}
+                          >
+                            {item.status}
+                          </span>
+
+                          {/* Handling Category Badges */}
+                          {item.categories?.includes('cold_chain') && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 px-2.5 py-0.5 text-[0.65rem] font-bold text-cyan-600">
+                              <ThermometerSnowflake className="h-3 w-3" /> 2°C–8°C Cold Chain
+                            </span>
+                          )}
+                          {item.categories?.includes('controlled_drugs') && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 px-2.5 py-0.5 text-[0.65rem] font-bold text-purple-600">
+                              <ShieldCheck className="h-3 w-3" /> Controlled Drug (ID Req)
+                            </span>
+                          )}
+
+                          <span className="text-xs text-muted-foreground">
+                            {item.package_count || '1 parcel'}
+                          </span>
+                        </div>
+
+                        {/* Assignment Badge / Pill */}
+                        <div className="flex items-center gap-2">
+                          {isUnassigned ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-600">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Unassigned Pool
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground">
+                              <UserCheck className="h-3.5 w-3.5 text-[#0d9488]" />
+                              {item.assigned_name || assignedStaff?.name || 'Staff Courier'}
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => copyTrackingLink(item.reference)}
+                            className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground"
+                            title="Copy customer tracking URL"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Consignment Stop Details (Pickup vs Dropoff) */}
+                      <div className="grid gap-4 sm:grid-cols-2 text-xs">
+                        {/* Dispensary Pickup */}
+                        <div className="rounded-xl border border-border/80 bg-secondary/30 p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between text-muted-foreground">
+                            <span className="font-bold uppercase tracking-wider text-[0.65rem] flex items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5 text-[#0d9488]" /> 1. Dispensary Collection
+                            </span>
+                            {item.pharmacy_phone && (
+                              <a
+                                href={`tel:${item.pharmacy_phone.replace(/\s+/g, '')}`}
+                                className="font-semibold text-[#0d9488] hover:underline flex items-center gap-1"
+                              >
+                                <Phone className="h-3 w-3" /> {item.pharmacy_phone}
+                              </a>
+                            )}
+                          </div>
+                          <p className="font-bold text-foreground text-sm">
+                            {item.pharmacy_name || 'Community Pharmacy Partner'}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {item.pickup_address || `${item.town || 'Birmingham'}, UK`}
+                          </p>
+                          {item.pickup_address && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.pickup_address)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[0.7rem] font-semibold text-accent hover:underline pt-1"
+                            >
+                              <Navigation className="h-3 w-3" /> Directions to Pharmacy
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Recipient Dropoff */}
+                        <div className="rounded-xl border border-border/80 bg-secondary/30 p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between text-muted-foreground">
+                            <span className="font-bold uppercase tracking-wider text-[0.65rem] flex items-center gap-1">
+                              <MapPin className="h-3.5 w-3.5 text-accent" /> 2. Patient Delivery
+                            </span>
+                            {item.recipient_phone && (
+                              <a
+                                href={`tel:${item.recipient_phone.replace(/\s+/g, '')}`}
+                                className="font-semibold text-accent hover:underline flex items-center gap-1"
+                              >
+                                <Phone className="h-3 w-3" /> {item.recipient_phone}
+                              </a>
+                            )}
+                          </div>
+                          <p className="font-bold text-foreground text-sm">
+                            {item.recipient_name || 'Recipient / Patient'}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {item.delivery_address || `${item.town || 'Birmingham'}, UK`}
+                          </p>
+                          {item.delivery_address && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.delivery_address)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[0.7rem] font-semibold text-accent hover:underline pt-1"
+                            >
+                              <Navigation className="h-3 w-3" /> Directions to Patient
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Courier / Dispatch Note */}
+                      {item.note && (
+                        <div className="rounded-xl bg-background border border-border/60 px-3.5 py-2 text-xs text-muted-foreground flex items-center gap-2">
+                          <Clock3 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            <strong>Latest Note:</strong> {item.note}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Action Bar based on Role */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
+                        {/* ADMIN CONTROLS: Assign & Forward to Staff */}
+                        {currentStaff.role === 'admin' ? (
+                          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              Assign Courier:
+                            </span>
+                            <select
+                              value={item.assigned_to || ''}
+                              onChange={(e) => handleAssignCourier(item.reference, e.target.value)}
+                              className="h-9 rounded-xl border border-input bg-background px-3 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-[#0d9488]"
+                            >
+                              <option value="">⚠️ Unassigned Pool</option>
+                              {couriers.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} ({c.unit ? c.unit.split('—')[0] : c.badge})
+                                </option>
+                              ))}
+                            </select>
+
+                            {/* Forward / Share Slip to Courier */}
+                            <button
+                              onClick={() => copyDispatchSlip(item)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-border bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary/80 transition-colors"
+                              title="Copy structured dispatch run sheet"
+                            >
+                              <Copy className="h-3 w-3" />
+                              {copiedSlipRef === item.reference ? 'Copied slip!' : 'Copy Run Sheet'}
+                            </button>
+
+                            <button
+                              onClick={() => openWhatsAppSlip(item)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-600/15 border border-emerald-600/30 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-600/25 transition-colors"
+                              title="Send dispatch assignment to staff courier"
+                            >
+                              <Share2 className="h-3 w-3" />
+                              WhatsApp Staff
+                            </button>
+                          </div>
+                        ) : (
+                          /* STAFF COURIER CONTROLS: Mark Collected or Delivered */
+                          <div className="flex flex-wrap items-center gap-2">
+                            {item.status !== 'delivered' && (
+                              <>
+                                {item.status !== 'dispatched' ? (
+                                  <button
+                                    onClick={() =>
+                                      handleStatusSubmit(
+                                        item,
+                                        'dispatched',
+                                        `Collected from dispensary by ${currentStaff.name}. Temperature log verified.`
+                                      )
+                                    }
+                                    disabled={updateLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                                  >
+                                    <Package className="h-3.5 w-3.5" />
+                                    Mark Collected from Pharmacy
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() =>
+                                      handleStatusSubmit(
+                                        item,
+                                        'delivered',
+                                        `Handed directly to patient by ${currentStaff.name}. Signed for on doorstep.`
+                                      )
+                                    }
+                                    disabled={updateLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#0d9488] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0d9488]/90 transition-colors shadow-sm"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    Mark Delivered & Signed
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Status Updater Modal / Dropdown Opener */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedItem(item)
+                              setUpdateStatus(item.status || 'dispatched')
+                              setUpdateNote(item.note || '')
+                            }}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d9488] hover:underline"
+                          >
+                            Update Notes & Status →
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* INLINE STATUS & NOTES EDITOR (When selected) */}
+                      {selectedItem?.reference === item.reference && (
+                        <div className="rounded-2xl border-2 border-[#0d9488]/30 bg-secondary/40 p-4 space-y-3 mt-3 animate-in fade-in">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              <Send className="h-3.5 w-3.5 text-[#0d9488]" />
+                              Update Status & Trigger Email Notifications
+                            </span>
+                            <button
+                              onClick={() => setSelectedItem(null)}
+                              className="text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1">
+                              <label className="text-[0.7rem] font-semibold text-foreground/80">
+                                New Consignment Status
+                              </label>
+                              <select
+                                value={updateStatus}
+                                onChange={(e) => setUpdateStatus(e.target.value)}
+                                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
+                              >
+                                {STATUS_OPTIONS.map((opt) => (
+                                  <option key={opt.id} value={opt.id}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[0.7rem] font-semibold text-foreground/80">
+                                Operational Courier Note
+                              </label>
+                              <input
+                                type="text"
+                                value={updateNote}
+                                onChange={(e) => setUpdateNote(e.target.value)}
+                                placeholder="e.g. Handed to named patient, signature captured"
+                                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={updateNotifyEmails}
+                                onChange={(e) => setUpdateNotifyEmails(e.target.checked)}
+                                className="rounded text-[#0d9488] focus:ring-[#0d9488]"
+                              />
+                              Send email update to pharmacy ({item.pharmacy_email || 'recorded'}) and recipient
+                            </label>
+
+                            <button
+                              onClick={() => handleStatusSubmit()}
+                              disabled={updateLoading}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#0d9488] px-4 text-xs font-bold text-white hover:bg-[#0d9488]/90 disabled:opacity-50 transition-colors shadow-sm"
+                            >
+                              {updateLoading ? (
+                                <>
+                                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Saving…
+                                </>
+                              ) : (
+                                'Save & Send Notifications'
+                              )}
+                            </button>
+                          </div>
+
+                          {updateSuccess && (
+                            <p className="text-xs font-bold text-accent">{updateSuccess}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
     </>
   )
 }
-

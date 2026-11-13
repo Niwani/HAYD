@@ -229,13 +229,20 @@ export default function Request() {
       await storageClient.entities.TrackStatus.create({
         reference: ref,
         status: 'received',
+        assigned_to: null,
+        assigned_name: null,
         town: form.town,
         recipient_name: form.patient_name,
         recipient_email: form.recipient_email,
+        recipient_phone: form.recipient_phone,
         pharmacy_name: form.pharmacy_name,
         pharmacy_email: form.email,
+        pharmacy_phone: form.phone,
+        pickup_address: form.pickup_address,
         delivery_address: `${form.address_line1}, ${form.town}, ${form.postcode}`,
-        note: `Collection logged for ${form.pharmacy_name}. Dispatching courier to collect from dispensary.`,
+        categories: form.categories,
+        package_count: `${form.package_count} package(s)`,
+        note: `Collection booked online by ${form.pharmacy_name}. Awaiting controller dispatch assignment.`,
       })
 
       // 2. Send email notification to healthatyourdoor.co@gmail.com and confirmation to pharmacy
