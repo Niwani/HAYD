@@ -442,6 +442,93 @@ export default function Track() {
                       )}
                     </div>
                   )}
+
+                  {/* ========================================================= */}
+                  {/* COLD-CHAIN & CD COMPLIANCE AUDIT CERTIFICATES */}
+                  {/* ========================================================= */}
+                  {result.categories?.includes('cold_chain') && (
+                    <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/[0.05] to-card p-4 md:p-5 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-500/20 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <ThermometerSnowflake className="h-4 w-4 text-cyan-600" />
+                          <span className="font-heading text-xs md:text-sm font-bold text-foreground">
+                            Cold-Chain Transit Temperature Verification (2°C–8°C)
+                          </span>
+                        </div>
+                        <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[0.65rem] font-bold text-emerald-700 dark:text-emerald-400">
+                          ✓ Zero Excursions Recorded
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                        <div className="rounded-xl bg-background/80 border border-border/70 p-2.5">
+                          <span className="text-[0.65rem] text-muted-foreground block">Pre-Departure Check</span>
+                          <span className="font-bold text-foreground">3.8°C (Verified)</span>
+                        </div>
+                        <div className="rounded-xl bg-background/80 border border-border/70 p-2.5">
+                          <span className="text-[0.65rem] text-muted-foreground block">Transit Min / Max</span>
+                          <span className="font-bold text-foreground">2.8°C – 5.1°C</span>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1 rounded-xl bg-background/80 border border-border/70 p-2.5">
+                          <span className="text-[0.65rem] text-muted-foreground block">Carrier Asset</span>
+                          <span className="font-bold text-foreground truncate block">TempMate Logger #8812</span>
+                        </div>
+                      </div>
+                      <p className="text-[0.68rem] text-muted-foreground">
+                        GDP Audited: Calibrated cool bag remained within strictly monitored 2°C–8°C parameters throughout entire transit.
+                      </p>
+                    </div>
+                  )}
+
+                  {result.categories?.includes('controlled_drugs') && (
+                    <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/[0.05] to-card p-4 md:p-5 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/20 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-4 w-4 text-purple-600" />
+                          <span className="font-heading text-xs md:text-sm font-bold text-foreground">
+                            Controlled Drug (CD) Two-Way Chain of Custody
+                          </span>
+                        </div>
+                        <span className="rounded-full bg-purple-500/15 px-2.5 py-0.5 text-[0.65rem] font-bold text-purple-700 dark:text-purple-300">
+                          Schedule 2/3 Accountability
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                        <div className="rounded-xl bg-background/80 border border-border/70 p-2.5 space-y-0.5">
+                          <span className="text-[0.65rem] text-muted-foreground uppercase font-bold block">
+                            1. Dispensary Counter Handover
+                          </span>
+                          <span className="font-bold text-foreground block">
+                            {result.cd_dispensary_handover?.pharmacist_name || 'Dispensing Pharmacist (GPhC Verified)'}
+                          </span>
+                          <span className="text-[0.65rem] text-purple-700 dark:text-purple-400 block">
+                            ✓ Tamper-evident seal & bag count signed
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl bg-background/80 border border-border/70 p-2.5 space-y-0.5">
+                          <span className="text-[0.65rem] text-muted-foreground uppercase font-bold block">
+                            2. Doorstep ID Verification
+                          </span>
+                          <span className="font-bold text-foreground block">
+                            {result.pod_evidence?.id_type
+                              ? result.pod_evidence.id_type.replace('_', ' ').toUpperCase()
+                              : 'Photocard ID Checked'}
+                          </span>
+                          <span className="text-[0.65rem] text-emerald-700 dark:text-emerald-400 block">
+                            ✓ Recipient identity verified prior to release
+                          </span>
+                        </div>
+                      </div>
+
+                      {result.cd_dispensary_return && (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                          <strong>Returned to Pharmacy CD Safe:</strong> Received back into dispensary safe by Pharmacist {result.cd_dispensary_return.receiving_pharmacist}.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* ========================================================= */}

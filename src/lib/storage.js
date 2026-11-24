@@ -4,7 +4,73 @@ const STORAGE_KEYS = {
   REQUESTS: 'hayd_delivery_requests',
   TRACK_STATUS: 'hayd_track_statuses_v3',
   CONTACTS: 'hayd_contact_messages',
+  SHIFT_TEMP_LOGS: 'hayd_shift_temp_logs_v1',
+  INCIDENT_REPORTS: 'hayd_incident_reports_v1',
 }
+
+const DEMO_SHIFT_TEMP_LOGS = [
+  {
+    id: 'SHIFT-TEMP-2026-11-24-U1',
+    driver_id: 'courier_1',
+    driver_name: 'Marcus Vance',
+    driver_unit: 'Unit 1 — Electric Van',
+    shift_date: new Date().toISOString().split('T')[0],
+    cool_box_id: 'HAYD-CB-04 (TempMate Data Logger #8812)',
+    pre_departure_temp: 3.8,
+    pre_departure_time: new Date(Date.now() - 3 * 3600000).toISOString(),
+    pre_departure_verified: true,
+    mid_shift_temp: 4.2,
+    mid_shift_time: new Date(Date.now() - 1.5 * 3600000).toISOString(),
+    end_shift_min_temp: 2.8,
+    end_shift_max_temp: 5.1,
+    end_shift_time: null,
+    excursion_occurred: false,
+    excursion_details: '',
+    status: 'active',
+    notes: 'Pre-departure calibration check passed. Ice packs conditioned 45 mins prior to loading.',
+  },
+  {
+    id: 'SHIFT-TEMP-2026-11-23-U2',
+    driver_id: 'courier_2',
+    driver_name: 'Amara Okafor',
+    driver_unit: 'Unit 2 — Rapid Transit',
+    shift_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    cool_box_id: 'HAYD-CB-02 (TempMate Data Logger #7741)',
+    pre_departure_temp: 4.1,
+    pre_departure_time: new Date(Date.now() - 86400000 - 6 * 3600000).toISOString(),
+    pre_departure_verified: true,
+    mid_shift_temp: 4.6,
+    mid_shift_time: new Date(Date.now() - 86400000 - 3 * 3600000).toISOString(),
+    end_shift_min_temp: 3.2,
+    end_shift_max_temp: 5.8,
+    end_shift_time: new Date(Date.now() - 86400000).toISOString(),
+    excursion_occurred: false,
+    excursion_details: '',
+    status: 'completed',
+    notes: 'Shift completed. 6 cold chain deliveries executed within 2°C–8°C limit. Data logger downloaded.',
+  },
+]
+
+const DEMO_INCIDENTS = [
+  {
+    id: 'INC-2026-081',
+    timestamp: new Date(Date.now() - 2 * 86400000).toISOString(),
+    driver_id: 'courier_1',
+    driver_name: 'Marcus Vance (Unit 1)',
+    incident_type: 'cd_id_failed',
+    severity: 'medium',
+    consignment_reference: 'HAYD-9X2L4A',
+    pharmacy_name: 'St Mary Dispensary Partner',
+    recipient_name: 'James Henderson',
+    description: 'Patient answered door but was unable to produce photographic ID for Schedule 2 medication. Non-relative third party offered to accept, which was declined under SOP CD-04.',
+    immediate_action_taken: 'Handover declined. Package retained in tamper-evident secure safe. Returned to St Mary Dispensary and signed back in by Pharmacist Helen Davies (GPhC 2049182).',
+    escalated_to_pharmacist: true,
+    pharmacist_name: 'Helen Davies (GPhC #2049182)',
+    status: 'resolved',
+    resolved_date: new Date(Date.now() - 2 * 86400000 + 3600000).toISOString(),
+    resolution_notes: 'Returned safely to dispensary CD cabinet. Prescription rescheduled for collection directly from pharmacy counter.',
+  },
+]
 
 // Initial demo tracking consignments representing active operations:
 const DEMO_STATUSES = [
@@ -444,6 +510,103 @@ export const storageClient = {
         items.unshift(record)
         setStore(STORAGE_KEYS.CONTACTS, items)
         return record
+      },
+    },
+
+    ShiftTempLog: {
+      async list() {
+        return getStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, DEMO_SHIFT_TEMP_LOGS)
+      },
+
+      async getActiveForDriver(driverId) {
+        const items = getStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, DEMO_SHIFT_TEMP_LOGS)
+        const today = new Date().toISOString().split('T')[0]
+        return items.find(
+          (log) => log.driver_id === driverId && log.shift_date === today && log.status === 'active'
+        ) || null
+      },
+
+      async create(data) {
+        const items = getStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, DEMO_SHIFT_TEMP_LOGS)
+        const today = new Date().toISOString().split('T')[0]
+        const record = {
+          id: `SHIFT-TEMP-${today}-${data.driver_id?.replace(/[^a-zA-Z0-9]/g, '') || 'U'}-${Date.now().toString().slice(-4)}`,
+          created_at: new Date().toISOString(),
+          shift_date: today,
+          status: 'active',
+          excursion_occurred: false,
+          excursion_details: '',
+          ...data,
+        }
+        items.unshift(record)
+        setStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, items)
+        return record
+      },
+
+      async update(id, patch) {
+        const items = getStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, DEMO_SHIFT_TEMP_LOGS)
+        const index = items.findIndex((l) => l.id === id)
+        if (index === -1) return null
+
+        const current = items[index]
+        const updated = {
+          ...current,
+          ...patch,
+          updated_at: new Date().toISOString(),
+        }
+
+        // Automatic excursion calculation if min/max given
+        const min = typeof updated.end_shift_min_temp === 'number' ? updated.end_shift_min_temp : null
+        const max = typeof updated.end_shift_max_temp === 'number' ? updated.end_shift_max_temp : null
+        const pre = typeof updated.pre_departure_temp === 'number' ? updated.pre_departure_temp : null
+
+        if (
+          (min !== null && min < 2.0) ||
+          (max !== null && max > 8.0) ||
+          (pre !== null && (pre < 2.0 || pre > 8.0))
+        ) {
+          updated.excursion_occurred = true
+        }
+
+        items[index] = updated
+        setStore(STORAGE_KEYS.SHIFT_TEMP_LOGS, items)
+        return updated
+      },
+    },
+
+    IncidentReport: {
+      async list() {
+        return getStore(STORAGE_KEYS.INCIDENT_REPORTS, DEMO_INCIDENTS)
+      },
+
+      async create(data) {
+        const items = getStore(STORAGE_KEYS.INCIDENT_REPORTS, DEMO_INCIDENTS)
+        const now = new Date()
+        const year = now.getFullYear()
+        const num = String(items.length + 82).padStart(3, '0')
+        const record = {
+          id: `INC-${year}-${num}`,
+          timestamp: now.toISOString(),
+          status: 'open',
+          escalated_to_pharmacist: true,
+          ...data,
+        }
+        items.unshift(record)
+        setStore(STORAGE_KEYS.INCIDENT_REPORTS, items)
+        return record
+      },
+
+      async update(id, patch) {
+        const items = getStore(STORAGE_KEYS.INCIDENT_REPORTS, DEMO_INCIDENTS)
+        const index = items.findIndex((i) => i.id === id)
+        if (index === -1) return null
+        items[index] = {
+          ...items[index],
+          ...patch,
+          updated_at: new Date().toISOString(),
+        }
+        setStore(STORAGE_KEYS.INCIDENT_REPORTS, items)
+        return items[index]
       },
     },
   },

@@ -51,6 +51,9 @@ import { sendStatusUpdateEmail, getTrackingUrl } from '@/lib/email'
 import AdminBookingSteps from '@/components/AdminBookingSteps'
 import ParcelLabelModal from '@/components/ParcelLabelModal'
 import DeliveryScanModal from '@/components/DeliveryScanModal'
+import ShiftCoolBagModal from '@/components/ShiftCoolBagModal'
+import CdHandoverModal from '@/components/CdHandoverModal'
+import IncidentReportModal from '@/components/IncidentReportModal'
 import { StaffChatWidget } from '@/components/StaffChatWidget'
 import { cn } from '@/lib/utils'
 import haydIconNavy from '@/assets/hayd-icon-navy.png'
@@ -167,6 +170,11 @@ export default function Dispatch() {
   // Anti-misdelivery: Sticker Printing & Doorstep Scan Modals
   const [labelModalItem, setLabelModalItem] = useState(null)
   const [scanModalItem, setScanModalItem] = useState(null)
+
+  // GDP Compliance & Audit Modals
+  const [showShiftTempModal, setShowShiftTempModal] = useState(false)
+  const [cdModalConfig, setCdModalConfig] = useState(null) // { item, mode: 'collect' | 'return' }
+  const [incidentModalConfig, setIncidentModalConfig] = useState(null) // { isOpen: true, data: { ... } }
 
   // 1. Initial Load & Session Check
   useEffect(() => {
@@ -331,6 +339,20 @@ export default function Dispatch() {
       {
         delivery_time: updateData.delivery_time,
         pod_evidence: updateData.pod_evidence,
+      }
+    )
+  }
+
+  // Handle Controlled Drug Dispensary Handover or Safe Return
+  const handleConfirmCdHandover = async (targetItem, updateData) => {
+    await handleStatusSubmit(
+      targetItem,
+      updateData.status,
+      updateData.note,
+      {
+        collection_time: updateData.collection_time,
+        cd_dispensary_handover: updateData.cd_dispensary_handover,
+        cd_dispensary_return: updateData.cd_dispensary_return,
       }
     )
   }
@@ -758,6 +780,52 @@ export default function Dispatch() {
           )}
 
           {/* ========================================================= */}
+          {/* REGULATED GDP & PHARMA COMPLIANCE ACTION BAR */}
+          {/* ========================================================= */}
+          <div className="rounded-3xl border border-border/80 bg-gradient-to-r from-cyan-500/[0.08] via-purple-500/[0.05] to-card p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#08162e] text-white p-2.5 shadow-sm">
+                  <ShieldCheck className="h-6 w-6 text-accent" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-heading text-sm md:text-base font-bold text-foreground">
+                      MHRA & GDP Clinical Compliance Engine
+                    </h3>
+                    <span className="rounded-full bg-emerald-600/15 px-2.5 py-0.5 text-[0.62rem] font-bold text-emerald-700 dark:text-emerald-400">
+                      100% Digital Audit
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Eliminates paper sheets: 1 shift cool bag check, two-way CD pharmacist handovers & live excursion reporting.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* 1. Shift Cool Bag Check (2°C–8°C) */}
+                <button
+                  onClick={() => setShowShiftTempModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-bold text-cyan-900 dark:text-cyan-300 hover:bg-cyan-500/20 transition-all shadow-sm active:scale-95"
+                >
+                  <ThermometerSnowflake className="h-4 w-4 text-cyan-600" />
+                  Shift Cool Bag Check (2°C–8°C)
+                </button>
+
+                {/* 2. Report Incident / Excursion */}
+                <button
+                  onClick={() => setIncidentModalConfig({ isOpen: true, data: {} })}
+                  className="inline-flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-xs font-bold text-destructive hover:bg-destructive/20 transition-all shadow-sm active:scale-95"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  Report Incident / Excursion
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ========================================================= */}
           {/* SEARCH & FILTER BAR */}
           {/* ========================================================= */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1012,6 +1080,35 @@ export default function Dispatch() {
                         </div>
                       )}
 
+                      {/* CD Two-Way Handover & Safe Return Status Badges */}
+                      {item.cd_dispensary_handover && (
+                        <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 px-3.5 py-2 text-xs text-purple-950 dark:text-purple-200 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-purple-600 shrink-0" />
+                            <span>
+                              <strong>CD Pharmacist Handover Signed:</strong> {item.cd_dispensary_handover.pharmacist_name} ({item.cd_dispensary_handover.pharmacist_gphc})
+                            </span>
+                          </div>
+                          <span className="text-[0.68rem] opacity-80 font-mono">
+                            Tamper seal verified • {new Date(item.cd_dispensary_handover.collected_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+
+                      {item.cd_dispensary_return && (
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                            <span>
+                              <strong>CD Safe Custody Return Receipt:</strong> Signed by Pharmacist {item.cd_dispensary_return.receiving_pharmacist}
+                            </span>
+                          </div>
+                          <span className="text-[0.68rem] opacity-80 font-mono">
+                            Reason: {item.cd_dispensary_return.return_reason} • Re-secured in safe
+                          </span>
+                        </div>
+                      )}
+
                       {/* Action Bar based on Role */}
                       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
                         {/* ADMIN CONTROLS: Assign & Forward to Staff */}
@@ -1063,39 +1160,75 @@ export default function Dispatch() {
                                 Scan & Deliver
                               </button>
                             )}
+
+                            {/* Admin CD Two-Way Action */}
+                            {item.categories?.includes('controlled_drugs') && item.status !== 'delivered' && (
+                              <button
+                                onClick={() => setCdModalConfig({ item, mode: item.status === 'dispatched' ? 'return' : 'collect' })}
+                                className="inline-flex items-center gap-1 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 transition-colors"
+                              >
+                                <ShieldCheck className="h-3 w-3" />
+                                {item.status === 'dispatched' ? 'CD Return Receipt' : 'CD Pharmacist Handover'}
+                              </button>
+                            )}
                           </div>
                         ) : (
-                          /* STAFF COURIER CONTROLS: Anti-misdelivery Scan & POD Handover */
+                          /* STAFF COURIER CONTROLS: Anti-misdelivery Scan, CD Handover & POD */
                           <div className="flex flex-wrap items-center gap-2">
                             {item.status !== 'delivered' ? (
                               <>
                                 {item.status !== 'dispatched' ? (
-                                  <button
-                                    onClick={() => {
-                                      const now = new Date()
-                                      const text = getStatusTextForLevel('dispatched', item, currentStaff)
-                                      handleStatusSubmit(
-                                        item,
-                                        'dispatched',
-                                        text,
-                                        { collection_time: now.toISOString() }
-                                      )
-                                    }}
-                                    disabled={updateLoading}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-                                  >
-                                    <Package className="h-3.5 w-3.5" />
-                                    Mark Collected from Pharmacy
-                                  </button>
+                                  <>
+                                    {item.categories?.includes('controlled_drugs') ? (
+                                      <button
+                                        onClick={() => setCdModalConfig({ item, mode: 'collect' })}
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-purple-700 transition-colors shadow-sm"
+                                      >
+                                        <ShieldCheck className="h-3.5 w-3.5" />
+                                        Pharmacist CD Handover
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          const now = new Date()
+                                          const text = getStatusTextForLevel('dispatched', item, currentStaff)
+                                          handleStatusSubmit(
+                                            item,
+                                            'dispatched',
+                                            text,
+                                            { collection_time: now.toISOString() }
+                                          )
+                                        }}
+                                        disabled={updateLoading}
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                                      >
+                                        <Package className="h-3.5 w-3.5" />
+                                        Mark Collected from Pharmacy
+                                      </button>
+                                    )}
+                                  </>
                                 ) : (
-                                  <button
-                                    onClick={() => setScanModalItem(item)}
-                                    disabled={updateLoading}
-                                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md active:scale-95"
-                                  >
-                                    <Scan className="h-4 w-4" />
-                                    Scan Barcode to Deliver
-                                  </button>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      onClick={() => setScanModalItem(item)}
+                                      disabled={updateLoading}
+                                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-all shadow-md active:scale-95"
+                                    >
+                                      <Scan className="h-4 w-4" />
+                                      Scan Barcode to Deliver
+                                    </button>
+
+                                    {item.categories?.includes('controlled_drugs') && (
+                                      <button
+                                        onClick={() => setCdModalConfig({ item, mode: 'return' })}
+                                        className="inline-flex items-center gap-1 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-500/20 transition-colors"
+                                        title="Return undelivered Controlled Drug to dispensary safe"
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        Return to CD Safe
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </>
                             ) : (
@@ -1112,8 +1245,27 @@ export default function Dispatch() {
                           </div>
                         )}
 
-                        {/* Status Updater Modal / Dropdown Opener */}
-                        <div className="flex items-center gap-2">
+                        {/* Status Updater & Log Issue Opener */}
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setIncidentModalConfig({
+                                isOpen: true,
+                                data: {
+                                  reference: item.reference,
+                                  pharmacy_name: item.pharmacy_name,
+                                  recipient_name: item.recipient_name,
+                                },
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-[0.72rem] font-semibold text-destructive hover:underline"
+                            title="Escalate incident or temperature excursion"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            Report Issue
+                          </button>
+
                           <button
                             onClick={() => {
                               setSelectedItem(item)
@@ -1269,6 +1421,39 @@ export default function Dispatch() {
           onClose={() => setScanModalItem(null)}
           onConfirmDelivery={handleConfirmVerifiedDelivery}
           currentStaff={currentStaff}
+        />
+      )}
+
+      {/* Regulated Cold-Chain Shift Cool Bag Log Modal */}
+      <ShiftCoolBagModal
+        isOpen={showShiftTempModal}
+        onClose={() => setShowShiftTempModal(false)}
+        currentStaff={currentStaff}
+        onOpenIncidentModal={(data) => setIncidentModalConfig({ isOpen: true, data })}
+      />
+
+      {/* Controlled Drug Two-Way Handover & Safe Return Modal */}
+      {cdModalConfig && (
+        <CdHandoverModal
+          isOpen={Boolean(cdModalConfig)}
+          onClose={() => setCdModalConfig(null)}
+          item={cdModalConfig?.item}
+          defaultMode={cdModalConfig?.mode}
+          currentStaff={currentStaff}
+          onConfirmHandover={handleConfirmCdHandover}
+        />
+      )}
+
+      {/* Regulated Incident & Excursion Report Modal */}
+      {incidentModalConfig && (
+        <IncidentReportModal
+          isOpen={Boolean(incidentModalConfig?.isOpen)}
+          onClose={() => setIncidentModalConfig(null)}
+          currentStaff={currentStaff}
+          initialData={incidentModalConfig?.data || {}}
+          onReportCreated={() => {
+            loadConsignments()
+          }}
         />
       )}
 

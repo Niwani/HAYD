@@ -64,6 +64,7 @@ export function DeliveryScanModal({ item, isOpen, onClose, onConfirmDelivery, cu
   const [recipientName, setRecipientName] = useState('')
   const [relationship, setRelationship] = useState('patient') // patient | spouse | carer | neighbor | other
   const [idVerified, setIdVerified] = useState(false)
+  const [idType, setIdType] = useState('driving_licence')
   const [courierNote, setCourierNote] = useState('')
   const [hasSignature, setHasSignature] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -234,6 +235,7 @@ export function DeliveryScanModal({ item, isOpen, onClose, onConfirmDelivery, cu
       signee_name: recipientName || item.recipient_name,
       signee_relationship: relationship,
       id_verified: idVerified,
+      id_type: idVerified ? idType : null,
       signature_data: signatureDataUrl,
       timestamp: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       date: now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
@@ -481,8 +483,8 @@ export function DeliveryScanModal({ item, isOpen, onClose, onConfirmDelivery, cu
 
           {/* Controlled Drugs ID check */}
           {item.categories?.includes('controlled_drugs') && (
-            <div className="rounded-xl border border-purple-500/40 bg-purple-500/10 p-3 space-y-1.5">
-              <label className="flex items-center gap-2 text-xs font-bold text-purple-900 dark:text-purple-300 cursor-pointer">
+            <div className="rounded-xl border border-purple-500/40 bg-purple-500/10 p-3.5 space-y-2.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-purple-950 dark:text-purple-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={idVerified}
@@ -491,9 +493,29 @@ export function DeliveryScanModal({ item, isOpen, onClose, onConfirmDelivery, cu
                 />
                 <span>🔐 Controlled Drug: Photographic ID Verified Prior to Handover</span>
               </label>
-              <p className="text-[0.68rem] text-purple-800/80 dark:text-purple-300/80 pl-6">
-                Driving license, passport, or NHS staff card verified.
-              </p>
+
+              {idVerified ? (
+                <div className="space-y-1 pl-6 pt-1 animate-in fade-in">
+                  <label className="text-[0.68rem] font-semibold text-purple-900 dark:text-purple-300">
+                    Form of Photo ID Verified
+                  </label>
+                  <select
+                    value={idType}
+                    onChange={(e) => setIdType(e.target.value)}
+                    className="h-8 w-full rounded-lg border border-purple-300 bg-background px-2.5 text-xs text-foreground focus:ring-1 focus:ring-purple-500"
+                  >
+                    <option value="driving_licence">UK Photocard Driving Licence</option>
+                    <option value="passport">Valid UK / International Passport</option>
+                    <option value="nhs_card">NHS Staff / Smartcard ID</option>
+                    <option value="brp">Biometric Residence Permit (BRP)</option>
+                    <option value="forces_id">HM Armed Forces / Defence ID</option>
+                  </select>
+                </div>
+              ) : (
+                <p className="text-[0.68rem] text-purple-800 dark:text-purple-300 pl-6 leading-relaxed">
+                  ⚠️ SOP-CD-04 requires physical photocard ID before releasing Schedule 2/3 medication. If ID is unavailable, do not leave package. Use <strong>Return to Pharmacy Safe</strong>.
+                </p>
+              )}
             </div>
           )}
 
