@@ -35,6 +35,8 @@ import {
   Printer,
   Scan,
   FileCheck,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react'
 import { PageHero } from '@/components/SharedSections'
 import { storageClient } from '@/lib/storage'
