@@ -581,6 +581,16 @@ export default function Dispatch() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            {(currentStaff.role === 'admin' || currentStaff.role === 'dispatcher' || currentStaff.role === 'compliance') && (
+              <Link
+                to="/admin"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-700 transition-all shadow-sm"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Admin Center
+              </Link>
+            )}
+
             <Link
               to="/track"
               target="_blank"

@@ -26,7 +26,7 @@ export function ScrollToTop() {
 
 export function Layout() {
   const { pathname } = useLocation()
-  const isStaffPortal = pathname === '/dispatch' || pathname === '/staff'
+  const isStaffPortal = pathname === '/dispatch' || pathname === '/staff' || pathname.startsWith('/admin')
 
   // Staff accounts/dispatch portal renders standalone without public header, footer, or public AI chat
   if (isStaffPortal) {
